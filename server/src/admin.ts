@@ -1,9 +1,10 @@
 import { adminPruefen } from "./anmeldung";
 import { Env, HttpFehler, json, leseJson, sha256Hex, text, zufallsCode } from "./hilfen";
 
-function verbindungsLink(req: Request, code: string): string {
-  // Immer https – auch wenn der Worker lokal über http angesprochen wird
-  return `https://${new URL(req.url).host}/verbinden#code=${code}`;
+function verbindungsLink(req: Request, env: Env, code: string): string {
+  // Öffentliche Adresse aus der Konfiguration (die App akzeptiert nur diese), sonst die aufgerufene – immer https
+  const basis = env.OEFFENTLICHE_ADRESSE?.replace(/\/+$/, "") || `https://${new URL(req.url).host}`;
+  return `${basis}/verbinden#code=${code}`;
 }
 
 async function neuerCode(env: Env, fahrerId: string): Promise<string> {
@@ -51,14 +52,14 @@ export async function admin(req: Request, env: Env, url: URL): Promise<Response>
     const id = zufallsCode(9);
     await env.DB.prepare("INSERT INTO fahrer (id, name, erstellt) VALUES (?, ?, ?)").bind(id, n, Date.now()).run();
     const code = await neuerCode(env, id);
-    return json({ fahrer: ohneGeheimnis(await fahrerHolen(env, id)), code, link: verbindungsLink(req, code) }, 201);
+    return json({ fahrer: ohneGeheimnis(await fahrerHolen(env, id)), code, link: verbindungsLink(req, env, code) }, 201);
   }
 
   // POST /api/admin/fahrer/:id/code – neuer Code, der alte wird ungültig
   if (teile[0] === "fahrer" && teile[2] === "code" && m === "POST") {
     await fahrerHolen(env, teile[1]);
     const code = await neuerCode(env, teile[1]);
-    return json({ code, link: verbindungsLink(req, code) });
+    return json({ code, link: verbindungsLink(req, env, code) });
   }
 
   // POST /api/admin/fahrer/:id {name?, aktiv?}
