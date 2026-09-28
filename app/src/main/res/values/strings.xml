@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Fahrtenbuch</string>
+    <string name="notification_channel_name">Fahrtaufzeichnung</string>
+    <string name="notification_channel_desc">Zeigt an, dass eine Fahrt aufgezeichnet wird.</string>
+    <string name="notification_title">Fahrt wird aufgezeichnet</string>
+    <string name="notification_stop">Fahrt beenden</string>
+    <string name="notification_done_title">Fahrt beendet</string>
+    <string name="notification_done_text">Bitte Kategorie für die Fahrt wählen.</string>
+</resources>

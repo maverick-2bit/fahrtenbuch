@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Straße -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.25"
+        android:pathData="M40,84 L50,24 L58,24 L68,84 Z" />
+    <!-- Mittelstreifen -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M52.5,74 h3 v8 h-3 z M53,58 h2 v8 h-2 z M53.4,44 h1.2 v7 h-1.2 z" />
+    <!-- Ortsmarke -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,20 C46.3,20 40,26.3 40,34 C40,44.5 54,58 54,58 C54,58 68,44.5 68,34 C68,26.3 61.7,20 54,20 Z M54,39 C51.2,39 49,36.8 49,34 C49,31.2 51.2,29 54,29 C56.8,29 59,31.2 59,34 C59,36.8 56.8,39 54,39 Z" />
+</vector>

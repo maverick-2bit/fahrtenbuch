@@ -1,0 +1,275 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "12382b1702c09c9e5877db7c6542bf12",
+    "entities": [
+      {
+        "tableName": "kategorien",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `farbe` INTEGER NOT NULL, `sortierung` INTEGER NOT NULL, `aktiv` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "farbe",
+            "columnName": "farbe",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortierung",
+            "columnName": "sortierung",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aktiv",
+            "columnName": "aktiv",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "fahrten",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startZeit` INTEGER NOT NULL, `endeZeit` INTEGER, `startAdresse` TEXT NOT NULL, `endeAdresse` TEXT NOT NULL, `startLat` REAL, `startLon` REAL, `endeLat` REAL, `endeLon` REAL, `distanzMeter` REAL NOT NULL, `kategorieId` INTEGER, `notiz` TEXT NOT NULL, `status` TEXT NOT NULL, `zwischenziele` TEXT NOT NULL DEFAULT '', FOREIGN KEY(`kategorieId`) REFERENCES `kategorien`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startZeit",
+            "columnName": "startZeit",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endeZeit",
+            "columnName": "endeZeit",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "startAdresse",
+            "columnName": "startAdresse",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endeAdresse",
+            "columnName": "endeAdresse",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startLat",
+            "columnName": "startLat",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "startLon",
+            "columnName": "startLon",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "endeLat",
+            "columnName": "endeLat",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "endeLon",
+            "columnName": "endeLon",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "distanzMeter",
+            "columnName": "distanzMeter",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kategorieId",
+            "columnName": "kategorieId",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "notiz",
+            "columnName": "notiz",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "zwischenziele",
+            "columnName": "zwischenziele",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_fahrten_kategorieId",
+            "unique": false,
+            "columnNames": [
+              "kategorieId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_fahrten_kategorieId` ON `${TABLE_NAME}` (`kategorieId`)"
+          },
+          {
+            "name": "index_fahrten_startZeit",
+            "unique": false,
+            "columnNames": [
+              "startZeit"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_fahrten_startZeit` ON `${TABLE_NAME}` (`startZeit`)"
+          },
+          {
+            "name": "index_fahrten_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_fahrten_status` ON `${TABLE_NAME}` (`status`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "kategorien",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "kategorieId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "trackpunkte",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `fahrtId` INTEGER NOT NULL, `zeit` INTEGER NOT NULL, `lat` REAL NOT NULL, `lon` REAL NOT NULL, `genauigkeit` REAL NOT NULL, `geschwindigkeit` REAL NOT NULL, FOREIGN KEY(`fahrtId`) REFERENCES `fahrten`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fahrtId",
+            "columnName": "fahrtId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "zeit",
+            "columnName": "zeit",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lat",
+            "columnName": "lat",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lon",
+            "columnName": "lon",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "genauigkeit",
+            "columnName": "genauigkeit",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "geschwindigkeit",
+            "columnName": "geschwindigkeit",
+            "affinity": "REAL",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_trackpunkte_fahrtId",
+            "unique": false,
+            "columnNames": [
+              "fahrtId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_trackpunkte_fahrtId` ON `${TABLE_NAME}` (`fahrtId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "fahrten",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "fahrtId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '12382b1702c09c9e5877db7c6542bf12')"
+    ]
+  }
+}
