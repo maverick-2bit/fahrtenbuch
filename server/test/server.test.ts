@@ -108,7 +108,7 @@ describe("Fahrer und Geräte-Code", () => {
     expect(f.link).toBe(`${BASIS}/verbinden#code=${f.code}`);
 
     const ich = await anfrage("/api/v1/ich", { headers: { authorization: `Bearer ${f.code}` } });
-    expect(await ich.json()).toEqual({ fahrer: { name: "Thomas" } });
+    expect(await ich.json()).toEqual({ fahrer: { name: "Thomas" }, schluessel: null });
 
     const neu = await adminPost(cookie, `/api/admin/fahrer/${f.id}/code`, {});
     const { code } = await neu.json<{ code: string }>();
@@ -276,6 +276,10 @@ describe("Synchronisation und Änderungsprotokoll", () => {
     const p = await env.DB.prepare("SELECT daten FROM fahrten_protokoll WHERE uuid = 'fahrt-000070'").first<{ daten: string }>();
     expect(p!.daten).not.toContain("Geheim");
     expect(p!.daten).not.toContain("47.38");
+
+    // Ein neues Gerät bekommt die Hülle, um mit dem PIN den bisherigen Datenschlüssel zu übernehmen
+    const ich = await anfrage("/api/v1/ich", { headers: { authorization: `Bearer ${code}` } });
+    expect((await ich.json<{ schluessel: unknown }>()).schluessel).toEqual(huelle);
 
     const a = await anfrage(`/api/admin/fahrten?fahrer=${fahrerId}&von=0&bis=${Date.UTC(2030, 0, 1)}`, { headers: { cookie } });
     const d = await a.json<{ fahrer: { schluessel: string }; fahrten: { geheim: string }[] }>();

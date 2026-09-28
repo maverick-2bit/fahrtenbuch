@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler d1 migrations apply fahrtenbuch --local -c wrangler.test.jsonc && wrangler dev -c wrangler.test.jsonc",
-    "test": "vitest run && node --test test-node/geheim.test.mjs",
+    "test": "vitest run && node --test \"test-node/*.test.mjs\"",
     "typecheck": "tsc --noEmit",
     "deploy": "wrangler d1 migrations apply fahrtenbuch --remote && wrangler pages deploy --branch master"
   },

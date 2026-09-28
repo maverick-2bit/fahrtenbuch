@@ -266,8 +266,13 @@ export async function sync(req: Request, env: Env): Promise<Response> {
   return json({ fahrer: { name: fahrer.name }, angenommen, abgelehnt, serverZeit: jetzt });
 }
 
-/** Kurze Prüfung, ob der Geräte-Code gilt – für die Verbindung in der App. */
+/**
+ * Kurze Prüfung, ob der Geräte-Code gilt – für die Verbindung in der App. Liefert auch die
+ * Schlüsselhülle (nur mit dem PIN zu öffnen): Ein neues Gerät übernimmt damit den bisherigen
+ * Datenschlüssel, statt einen neuen anzulegen, mit dem die alten Privatfahrten unlesbar würden.
+ */
 export async function ich(req: Request, env: Env): Promise<Response> {
   const f = await fahrerPruefen(req, env);
-  return json({ fahrer: { name: f.name } });
+  const s = await env.DB.prepare("SELECT schluessel FROM fahrer WHERE id = ?").bind(f.id).first<{ schluessel: string | null }>();
+  return json({ fahrer: { name: f.name }, schluessel: s?.schluessel ? JSON.parse(s.schluessel) : null });
 }

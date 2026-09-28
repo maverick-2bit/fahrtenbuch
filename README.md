@@ -1,6 +1,7 @@
 # Fahrtenbuch
 
-Android-App für ein digitales Fahrtenbuch (2bit e.U.).
+Digitales Fahrtenbuch: Android-App, Web-App fürs iPhone und Online-Sicherung mit Verwaltungsseite
+(s/e smarte events OG und 2bit e.U.).
 
 - Fahrt per GPS aufzeichnen: Startadresse, Strecke, Zieladresse; Ende per Knopf oder automatisch nach Stillstand
 - Am Ziel: Kategorie wählen (Kategorien frei definierbar)
@@ -9,13 +10,25 @@ Android-App für ein digitales Fahrtenbuch (2bit e.U.).
 - Berichte je Monat, Jahr und Zeitraum, getrennt nach Kategorie; Export als PDF und CSV
 - Warnung vor fixen Blitzern in Österreich (Daten © OpenStreetMap-Mitwirkende, ODbL)
 - In-App-Update über die Releases dieses Repos
+- Online-Sicherung: jede abgeschlossene Fahrt und jede Änderung in einem unveränderlichen Protokoll;
+  Verwaltungsseite mit Fahrtenbuch, Berichten und Änderungsprotokoll je Fahrer (`server/`, Cloudflare Pages + D1)
+- Privatfahrten mit persönlichem PIN: Details gehen nur verschlüsselt an den Server
 
-## Installation
+## iPhone
+
+Das iPhone nutzt die Web-App unter `/app/` auf dem Server (Safari → Teilen → Zum Home-Bildschirm).
+Sie zeichnet auf, solange sie geöffnet ist, und hält dafür den Bildschirm wach.
+
+## Installation (Android)
 
 Die neueste `Fahrtenbuch-x.y.z.apk` unter [Releases](../../releases/latest) herunterladen und am Handy öffnen.
 Danach aktualisiert sich die App unter *Einstellungen → App-Update* selbst.
 
 ## Bauen
+
+Server und Web-App: `cd server && npm test` (Vitest + Node-Tests), lokal starten mit `npm run dev`.
+
+Android-App:
 
 Voraussetzungen: JDK 17, Android SDK (Platform 35).
 

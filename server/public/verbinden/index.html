@@ -13,7 +13,7 @@
   <main class="inhalt">
     <div class="karte anmeldung">
       <h1>Fahrtenbuch verbinden</h1>
-      <p class="unter">Mit diesem Link sichert die Fahrtenbuch-App deine Fahrten automatisch.</p>
+      <p class="unter">Mit diesem Link sichert das Fahrtenbuch deine Fahrten automatisch.</p>
 
       <div id="fehlt" hidden>
         <p class="fehler">Der Link ist unvollständig. Bitte den QR-Code erneut scannen.</p>
@@ -27,7 +27,12 @@
       </div>
 
       <div id="iphone" hidden>
-        <p>Für das iPhone gibt es das Fahrtenbuch bald als Web-App. Bis dahin diesen Link bitte aufbewahren.</p>
+        <p>Am iPhone läuft das Fahrtenbuch als Web-App in Safari.</p>
+        <ol class="schritte">
+          <li><button id="kopieren" class="knopf" type="button">Link kopieren</button> <span id="kopiert" class="klein"></span></li>
+          <li><a class="knopf haupt" href="/app/">Fahrtenbuch öffnen</a></li>
+          <li>Dort zeigt dir die Web-App, wie du sie zum Home-Bildschirm hinzufügst und den Link einfügst.</li>
+        </ol>
       </div>
 
       <div id="pc" hidden>

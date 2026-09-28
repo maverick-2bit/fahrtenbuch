@@ -11,6 +11,17 @@ Alle Änderungen am Fahrtenbuch (Android-App und Server). Versionen nach SemVer;
 - Verwaltungsseite: „Privatfahrten anzeigen“ entschlüsselt nach Eingabe des PINs im Browser; der PIN verlässt
   weder Handy noch Browser.
 - Server: Spalten `fahrer.schluessel` und `fahrten.geheim` (Migration 0002).
+- iPhone-Web-App unter `/app/` (zum Home-Bildschirm hinzufügen): GPS-Aufzeichnung, Pause mit Zwischenziel,
+  automatisches Fahrtende, Kategorie-Abfrage, Fahrten bearbeiten und nachtragen, Berichte mit CSV,
+  gespeicherte Orte, Online-Sicherung und PIN für Privatfahrten – gleiche Daten und gleiche Verschlüsselung wie
+  die Android-App. Zeichnet auf, solange sie offen ist, und hält dafür den Bildschirm wach; Stücke bei
+  ausgeschaltetem Bildschirm werden über die Straße nachgerechnet, die Ankunftszeit wird geschätzt. Startet auch
+  ohne Netz.
+- Server: Adressen und Straßenkilometer für die Web-App (`/api/v1/adresse`, `/koordinaten`, `/route`) über
+  OpenStreetMap-Dienste (Nominatim, FOSSGIS-Routing) mit Zwischenspeicher, nur für verbundene Fahrer.
+- Neues Gerät: `/api/v1/ich` liefert die Schlüsselhülle, die Web-App übernimmt damit per PIN den bisherigen
+  Datenschlüssel – sonst wären die schon gesicherten Privatfahrten nicht mehr lesbar.
+- Verbindungsseite: am iPhone Anleitung zur Web-App und „Link kopieren“.
 
 ### Geändert
 - Fahrten werden erst ab dem Zuordnen einer Kategorie ins Änderungsprotokoll geschrieben und gesichert, damit
