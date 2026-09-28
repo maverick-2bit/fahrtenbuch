@@ -121,6 +121,8 @@ object Benachrichtigungen {
      * „Fahrt starten“ ist immer erlaubt und startet die Aufzeichnung sofort.
      */
     fun autoStartFrage(context: Context, g: BtGeraet, rechte: AutoStartRechte) {
+        // Kommt aus dem Bluetooth-Empfänger, womöglich bevor App oder Dienst die Kanäle angelegt haben
+        kanaeleAnlegen(context)
         val starten = PendingIntent.getForegroundService(
             context, 6, TrackingService.startIntent(context, g),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
