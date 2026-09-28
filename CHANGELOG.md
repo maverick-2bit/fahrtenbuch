@@ -18,6 +18,10 @@ Alle Änderungen am Fahrtenbuch (Android-App und Server). Versionen nach SemVer;
 - Repository in die Organisation smarte-events verschoben; In-App-Update liest von dort.
 - App-Datenbank Version 4 (Kategorie-Feld `privat`, „Privat“ wird automatisch privat).
 
+### Behoben
+- In-App-Update: Scheitert die Installation, zeigt die App den Grund von Android an und bietet
+  „Mit dem Android-Installer versuchen“ an – die schon geladene Datei geht dann an den normalen Android-Installer.
+
 ## [0.4.0] – 2026-09-28
 - Online-Sicherung: Verbindung per QR-Code, Änderungsprotokoll je Fahrt, Sicherung im Hintergrund.
 - Server (Cloudflare Pages + D1): Admin-Webseite mit Fahrtenbuch, Berichten, Kilometerstand,

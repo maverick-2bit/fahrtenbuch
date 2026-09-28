@@ -421,7 +421,16 @@ private fun UpdateKarte() {
                     Text("Suche nach Updates …")
                 }
                 UpdateStatus.Aktuell -> Text("Die App ist auf dem neuesten Stand.", style = MaterialTheme.typography.bodySmall)
-                is UpdateStatus.Fehler -> Text(s.text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                is UpdateStatus.Fehler -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(s.text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    // Zweiter Weg: die schon geladene Datei dem normalen Android-Installer geben
+                    s.datei?.takeIf { it.exists() }?.let { datei ->
+                        OutlinedButton(
+                            onClick = { runCatching { Updater.mitAndroidInstallerOeffnen(context, datei) } },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Mit dem Android-Installer versuchen") }
+                    }
+                }
                 is UpdateStatus.Laedt -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Lade Version ${s.info.version} … ${s.prozent} %")
                     LinearProgressIndicator(progress = { s.prozent / 100f }, modifier = Modifier.fillMaxWidth())
