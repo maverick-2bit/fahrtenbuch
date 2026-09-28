@@ -36,7 +36,7 @@ object BerichtExport {
         fun feld(s: String): String =
             if (s.any { it == ';' || it == '"' || it == '\n' || it == '\r' }) "\"" + s.replace("\"", "\"\"") + "\"" else s
 
-        val sb = StringBuilder("﻿") // BOM, damit Excel UTF-8 erkennt
+        val sb = StringBuilder().append(0xFEFF.toChar()) // BOM, damit Excel UTF-8 erkennt
         sb.append("Fahrtenbuch\r\n")
         kopfzeilen(bericht, e).forEach { (k, v) -> sb.append(feld(k)).append(';').append(feld(v)).append("\r\n") }
         sb.append("\r\n")

@@ -3,6 +3,10 @@
 
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Automatischer Start beim Einsteigen: Standort auch im Hintergrund, Verbindung mit dem Auto erkennen -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -71,6 +75,17 @@
         <receiver
             android:name=".update.InstallReceiver"
             android:exported="false" />
+
+        <!-- Verbindung mit dem Auto (Bluetooth) – kommt vom Bluetooth-Dienst des Systems, daher exported.
+             Der Empfänger reagiert nur auf die in den Einstellungen gewählten Geräte. -->
+        <receiver
+            android:name=".tracking.BluetoothReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

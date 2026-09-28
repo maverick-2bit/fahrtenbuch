@@ -68,6 +68,9 @@ class HauptViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stoppen() = TrackingService.stoppen(app)
+
+    /** Warten auf das Losfahren abbrechen (mit dem Auto verbunden, aber keine Fahrt aufzeichnen). */
+    fun nichtAufzeichnen() = TrackingService.nichtAufzeichnen(app)
     fun pausieren() = TrackingService.pausieren(app)
     fun weiterfahren() = TrackingService.weiterfahren(app)
 

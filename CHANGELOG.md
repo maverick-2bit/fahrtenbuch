@@ -25,6 +25,12 @@ Alle Änderungen am Fahrtenbuch (Android-App und Server). Versionen nach SemVer;
 - Android-App: Neues Handy oder neu installiert – hat der Server schon einen PIN-Schlüssel, fragt die App
   nach dem bisherigen PIN und übernimmt ihn, statt einen neuen anzulegen („PIN vergessen“ bleibt möglich).
 
+- Android-App: Fahrt automatisch starten, wenn sich das Handy mit dem Auto verbindet (Bluetooth, Geräte in
+  den Einstellungen wählbar) und das Auto losfährt – Start am Parkplatz zum Zeitpunkt des Losfahrens. Eine
+  pausierte Fahrt geht beim Losfahren automatisch weiter. Solange das Auto verbunden ist, beendet Stillstand
+  (Stau, Ampel) die Fahrt nicht. Braucht „Standort: Immer zulassen“, „Geräte in der Nähe“ und keine
+  Akku-Optimierung; fehlt etwas, fragt die App beim Verbinden per Benachrichtigung.
+
 ### Geändert
 - Fahrten werden erst ab dem Zuordnen einer Kategorie ins Änderungsprotokoll geschrieben und gesichert, damit
   eine Privatfahrt nie vorher im Klartext übertragen wird. Alteinträge aus 0.4 ohne Kategorie entfallen.
@@ -32,6 +38,7 @@ Alle Änderungen am Fahrtenbuch (Android-App und Server). Versionen nach SemVer;
 - App-Datenbank Version 4 (Kategorie-Feld `privat`, „Privat“ wird automatisch privat).
 
 ### Behoben
+- CSV-Export: Excel-Kennung (BOM) im Quelltext als Zeichencode statt als unsichtbares Zeichen (Lint-Fehler).
 - In-App-Update: Scheitert die Installation, zeigt die App den Grund von Android an und bietet
   „Mit dem Android-Installer versuchen“ an – die schon geladene Datei geht dann an den normalen Android-Installer.
 

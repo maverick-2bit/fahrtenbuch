@@ -254,7 +254,11 @@ fun FahrtScreen(vm: HauptViewModel, zuordnen: (Long) -> Unit) {
                     }
                     Text(
                         when {
+                            pause && live.auto != null -> "Während der Pause wird nicht aufgezeichnet. Fährst du mit „${live.auto}“ los, " +
+                                "geht die Fahrt automatisch weiter."
                             pause -> "Während der Pause wird nicht aufgezeichnet, und die Fahrt endet nicht automatisch."
+                            live.auto != null -> "Mit „${live.auto}“ verbunden: Stau oder Ampel beenden die Fahrt nicht. " +
+                                "Für Hin- und Rückfahrt am Zwischenziel „Pause“ tippen."
                             einstellungen.autoStoppMinuten > 0 -> "Endet automatisch nach ${einstellungen.autoStoppMinuten} min Stillstand. " +
                                 "Für Hin- und Rückfahrt am Zwischenziel „Pause“ tippen."
                             else -> "Für Hin- und Rückfahrt am Zwischenziel „Pause“ tippen."
@@ -327,6 +331,21 @@ fun FahrtScreen(vm: HauptViewModel, zuordnen: (Long) -> Unit) {
                 }
             }
         } else {
+            live.wartetAuf?.let { auto ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Mit „$auto“ verbunden", style = MaterialTheme.typography.titleMedium)
+                        Text("Die Fahrt startet automatisch, sobald du losfährst.")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = ::starten, modifier = Modifier.weight(1f)) { Text("Jetzt starten") }
+                            OutlinedButton(onClick = vm::nichtAufzeichnen, modifier = Modifier.weight(1f)) { Text("Nicht aufzeichnen") }
+                        }
+                    }
+                }
+            }
             StartAuswahl(orte, startOrt) { vm.startOrt.value = it }
             Button(
                 onClick = ::starten,

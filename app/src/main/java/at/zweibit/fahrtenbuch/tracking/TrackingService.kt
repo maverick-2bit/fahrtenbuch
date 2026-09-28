@@ -17,6 +17,7 @@ import at.zweibit.fahrtenbuch.blitzer.BlitzerDaten
 import at.zweibit.fahrtenbuch.blitzer.BlitzerPruefer
 import at.zweibit.fahrtenbuch.blitzer.BlitzerText
 import at.zweibit.fahrtenbuch.blitzer.Warnausgabe
+import at.zweibit.fahrtenbuch.data.BtGeraet
 import at.zweibit.fahrtenbuch.data.EinstellungenWerte
 import at.zweibit.fahrtenbuch.data.Fahrt
 import at.zweibit.fahrtenbuch.data.FahrtStatus
@@ -51,6 +52,10 @@ import kotlin.math.roundToInt
  * laufende Positionsupdates (Strecke summieren, Punkte speichern) → optional Pausen mit
  * Zwischenziel → Ende per Knopf oder automatisch nach einstellbarer Stillstandszeit →
  * Zieladresse → Status „offen“ → Kategorie-Abfrage.
+ *
+ * Automatischer Start: Verbindet sich das Handy mit dem Auto (Bluetooth), wartet der Dienst, bis das
+ * Auto losfährt ([LosfahrErkennung]), und beginnt dann die Fahrt am Parkplatz. Eine pausierte Fahrt
+ * geht so automatisch weiter. Solange das Auto verbunden ist, beendet Stillstand die Fahrt nicht.
  */
 class TrackingService : LifecycleService() {
 
@@ -59,7 +64,39 @@ class TrackingService : LifecycleService() {
         const val ACTION_STOPP = "at.zweibit.fahrtenbuch.STOPP"
         const val ACTION_PAUSE = "at.zweibit.fahrtenbuch.PAUSE"
         const val ACTION_WEITER = "at.zweibit.fahrtenbuch.WEITER"
+        const val ACTION_BEREIT = "at.zweibit.fahrtenbuch.BEREIT"
+        const val ACTION_BT_GETRENNT = "at.zweibit.fahrtenbuch.BT_GETRENNT"
+        const val ACTION_NICHT_AUFZEICHNEN = "at.zweibit.fahrtenbuch.NICHT_AUFZEICHNEN"
         private const val EXTRA_START_ADRESSE = "start_adresse"
+        private const val EXTRA_AUTO_ADRESSE = "auto_adresse"
+        private const val EXTRA_AUTO_NAME = "auto_name"
+
+        /** So lange wartet der Dienst nach dem Verbinden mit dem Auto auf das Losfahren. */
+        private const val WARTEN_MAX_MS = 30 * 60_000L
+
+        /** Längstens so lange hält eine Verbindung zum Auto das automatische Fahrtende auf. */
+        private const val AUSSETZEN_MAX_MS = 2 * 3600_000L
+
+        private fun Intent.mitAuto(g: BtGeraet): Intent = putExtra(EXTRA_AUTO_ADRESSE, g.adresse).putExtra(EXTRA_AUTO_NAME, g.name)
+
+        private fun autoAus(intent: Intent?): BtGeraet? =
+            intent?.getStringExtra(EXTRA_AUTO_ADRESSE)?.let { BtGeraet(it, intent.getStringExtra(EXTRA_AUTO_NAME) ?: it) }
+
+        /** Mit dem Auto verbunden: auf das Losfahren warten (Start als Vordergrunddienst). */
+        fun bereitIntent(context: Context, g: BtGeraet): Intent =
+            Intent(context, TrackingService::class.java).setAction(ACTION_BEREIT).mitAuto(g)
+
+        fun getrenntIntent(context: Context, g: BtGeraet): Intent =
+            Intent(context, TrackingService::class.java).setAction(ACTION_BT_GETRENNT).mitAuto(g)
+
+        /** Fahrt sofort starten; [g] = Auto, mit dem das Handy verbunden ist (aus der Nachfrage-Benachrichtigung). */
+        fun startIntent(context: Context, g: BtGeraet? = null): Intent =
+            Intent(context, TrackingService::class.java).setAction(ACTION_START).apply { if (g != null) mitAuto(g) }
+
+        /** Warten auf das Losfahren abbrechen („Nicht aufzeichnen“). */
+        fun nichtAufzeichnen(context: Context) {
+            runCatching { context.startService(Intent(context, TrackingService::class.java).setAction(ACTION_NICHT_AUFZEICHNEN)) }
+        }
 
         /** Fahrten unter dieser Strecke werden beim automatischen Ende verworfen. */
         private const val MIN_FAHRT_METER = 100.0
@@ -107,6 +144,13 @@ class TrackingService : LifecycleService() {
     private var warnausgabe: Warnausgabe? = null
     private var ansage = true
     private var kursBasis: Location? = null
+
+    // Automatischer Start per Bluetooth
+    private var wartend: LosfahrErkennung? = null
+    private var wartenJob: Job? = null
+
+    /** Auto, mit dem das Handy verbunden ist – nur bekannt, solange der Dienst die Verbindung mitbekommen hat. */
+    private var auto: BtGeraet? = null
 
     private val callback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -190,10 +234,24 @@ class TrackingService : LifecycleService() {
                 vordergrundAktuell()
                 lifecycleScope.launch { weiterfahren() }
             }
-            // START oder Neustart durch das System (intent == null): laufende Fahrt fortsetzen
-            else -> {
+            ACTION_BEREIT -> {
+                val g = autoAus(intent)
+                // Nach startForegroundService sofort in den Vordergrund – Pflicht bei Android
+                if (fahrt != null && !beendet) vordergrundAktuell() else vordergrundWarten(g?.name ?: "Auto")
+                if (g != null) lifecycleScope.launch { bereitMachen(g) } else lifecycleScope.launch { wartenBeenden(ohneWarten = true) }
+            }
+            ACTION_BT_GETRENNT -> lifecycleScope.launch { getrennt(autoAus(intent)) }
+            ACTION_NICHT_AUFZEICHNEN -> lifecycleScope.launch { wartenBeenden() }
+            // Neustart durch das System: nur eine laufende Fahrt fortsetzen, nie eine neue beginnen
+            null -> {
                 vordergrund(System.currentTimeMillis(), 0.0, "")
-                val vorgabe = intent?.getStringExtra(EXTRA_START_ADRESSE)
+                lifecycleScope.launch { wiederherstellen() }
+            }
+            else -> {
+                autoAus(intent)?.let { auto = it }
+                Benachrichtigungen.autoStartFrageEntfernen(this)
+                vordergrund(System.currentTimeMillis(), 0.0, "")
+                val vorgabe = intent.getStringExtra(EXTRA_START_ADRESSE)
                 lifecycleScope.launch { startenOderFortsetzen(vorgabe) }
             }
         }
@@ -215,9 +273,21 @@ class TrackingService : LifecycleService() {
         }
     }
 
+    private fun vordergrundWarten(name: String) {
+        val typ = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
+        try {
+            ServiceCompat.startForeground(this, Benachrichtigungen.ID_LAUFEND, Benachrichtigungen.wartet(this, name), typ)
+        } catch (e: Exception) {
+            // Ohne Standortrecht im Hintergrund lässt Android den Dienst nicht zu
+            stopSelf()
+        }
+    }
+
     private suspend fun startenOderFortsetzen(startAdresse: String? = null) {
         val vorhanden = mutex.withLock {
             if (fahrt != null && !beendet) return
+            // Manueller Start während des Wartens auf das Losfahren: Warten ist erledigt
+            wartend = null
             if (beendet) {
                 // Neue Fahrt direkt nach dem Beenden der vorigen im selben Dienst
                 beendet = false
@@ -247,10 +317,137 @@ class TrackingService : LifecycleService() {
                 false
             }
         }
+        wartenJob?.cancel()
+        wartenJob = null
+        LiveStatus.zustand.update { it.copy(wartetAuf = null, auto = auto?.name) }
         benachrichtigungAktualisieren()
         if (!pausiert) updatesStarten()
         tickerStarten()
         if (!vorhanden) startpositionErmitteln()
+    }
+
+    // ------------------------------------------------ Automatischer Start per Bluetooth
+
+    /** Das Handy ist mit dem Auto verbunden: Verbindung merken und auf das Losfahren warten. */
+    private suspend fun bereitMachen(g: BtGeraet) {
+        auto = g
+        Benachrichtigungen.autoStartFrageEntfernen(this)
+        // Läuft schon eine Fahrt (auch nach einem Neustart des Dienstes), bleibt sie – mit dem Auto als Verbindung
+        val laeuft = mutex.withLock { fahrt != null && !beendet } || repo.laufendeFahrtEinmal()?.also { startenOderFortsetzen() } != null
+        if (laeuft) {
+            LiveStatus.zustand.update { it.copy(auto = g.name) }
+            // Pausiert (z. B. beim Kunden): Beim Losfahren geht dieselbe Fahrt automatisch weiter
+            if (pausiert) wartenBeginnen(g)
+            benachrichtigungAktualisieren()
+            return
+        }
+        wartenBeginnen(g)
+    }
+
+    private suspend fun wartenBeginnen(g: BtGeraet) {
+        val ohneFahrt = mutex.withLock {
+            wartend = LosfahrErkennung()
+            fahrt == null || beendet
+        }
+        LiveStatus.zustand.update { it.copy(wartetAuf = if (ohneFahrt) g.name else null, auto = g.name) }
+        if (ohneFahrt) vordergrundWarten(g.name)
+        updatesStarten()
+        wartenJob?.cancel()
+        wartenJob = lifecycleScope.launch {
+            delay(WARTEN_MAX_MS)
+            wartenJob = null
+            wartenBeenden()
+        }
+    }
+
+    /**
+     * Warten beenden (Zeit abgelaufen, Verbindung getrennt oder „Nicht aufzeichnen“). Ohne Fahrt endet
+     * der Dienst, eine pausierte Fahrt bleibt pausiert.
+     */
+    private suspend fun wartenBeenden(ohneWarten: Boolean = false) {
+        val ohneFahrt = mutex.withLock {
+            if (wartend == null && !ohneWarten) {
+                stoppenWennUntaetig()
+                return
+            }
+            wartend = null
+            fahrt == null || beendet
+        }
+        wartenJob?.cancel()
+        wartenJob = null
+        LiveStatus.zustand.update { it.copy(wartetAuf = null) }
+        if (ohneFahrt) {
+            updatesStoppen()
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        } else if (pausiert) {
+            updatesStoppen()
+        }
+    }
+
+    /** Das Auto ist losgefahren: Fahrt am Parkplatz beginnen – oder die pausierte Fahrt fortsetzen. */
+    private suspend fun losfahren(loc: Location) {
+        val w = mutex.withLock { wartend.also { wartend = null } } ?: return
+        wartenJob?.cancel()
+        wartenJob = null
+        LiveStatus.zustand.update { it.copy(wartetAuf = null) }
+        if (mutex.withLock { fahrt != null && !beendet }) {
+            if (pausiert) weiterfahren(ab = w.startPunkt?.zeit)
+            return
+        }
+        val start = w.startPunkt ?: return
+        val neu = mutex.withLock {
+            val f = Fahrt(startZeit = start.zeit, startLat = start.lat, startLon = start.lon, status = FahrtStatus.LAUFEND)
+            val id = repo.fahrtAnlegen(f)
+            val r = StreckenRechner(0.0, start)
+            for (p in w.spur) {
+                if (r.hinzufuegen(p)) {
+                    repo.punktSpeichern(Trackpunkt(fahrtId = id, zeit = p.zeit, lat = p.lat, lon = p.lon, genauigkeit = p.genauigkeit, geschwindigkeit = 0f))
+                }
+            }
+            repo.distanzSetzen(id, r.meter)
+            rechner = r
+            stillstand = StillstandErkennung(start.zeit).also { s -> w.spur.forEach(s::punkt) }
+            beendet = false
+            pausiert = false
+            letzteLocation = loc
+            kursBasis = null
+            f.copy(id = id, distanzMeter = r.meter).also { fahrt = it }
+        }
+        LiveStatus.zustand.update { it.copy(auto = auto?.name) }
+        benachrichtigungAktualisieren()
+        tickerStarten()
+        // Startadresse: gespeicherter Ort im Umkreis oder die Adresse des Parkplatzes
+        val adresse = Adressen.bestimmen(this, start.lat, start.lon, app.einstellungen.orteAktuell())
+        mutex.withLock {
+            if (repo.fahrt(neu.id)?.startAdresse?.isBlank() != true) return@withLock
+            repo.startAdresseSetzen(neu.id, adresse)
+            val m = fahrt
+            if (m != null && m.id == neu.id) fahrt = m.copy(startAdresse = adresse)
+        }
+        benachrichtigungAktualisieren()
+    }
+
+    /** Verbindung zum Auto getrennt: Warten endet; eine laufende Fahrt endet wieder nach Stillstand. */
+    private suspend fun getrennt(g: BtGeraet?) {
+        val passt = g != null && auto?.adresse?.equals(g.adresse, ignoreCase = true) == true
+        if (passt) {
+            auto = null
+            LiveStatus.zustand.update { it.copy(auto = null) }
+        }
+        // Nur das Trennen des Autos, auf das gewartet wird, beendet das Warten
+        if (passt && wartend != null) wartenBeenden() else mutex.withLock { stoppenWennUntaetig() }
+    }
+
+    /**
+     * Kam eine Meldung (Trennen, „Nicht aufzeichnen“) bei einem Dienst ohne Fahrt und ohne Warten an,
+     * hat ihn Android nur dafür gestartet – dann gleich wieder beenden. Nur unter [mutex] aufrufen.
+     */
+    private fun stoppenWennUntaetig() {
+        if ((fahrt == null || beendet) && wartend == null) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
     }
 
     /** Stellt nach einem Neustart des Dienstes die laufende Fahrt wieder her. */
@@ -287,6 +484,8 @@ class TrackingService : LifecycleService() {
             LiveStatus.zustand.update { it.copy(kmh = null, voraus = null) }
         }
         benachrichtigungAktualisieren()
+        // Mit dem Auto verbunden: Fährt es wieder los, geht dieselbe Fahrt automatisch weiter
+        auto?.let { wartenBeginnen(it) }
         zwischenzielAdresseErmitteln()
     }
 
@@ -310,14 +509,16 @@ class TrackingService : LifecycleService() {
         benachrichtigungAktualisieren()
     }
 
-    private suspend fun weiterfahren() {
+    /** @param ab Zeitpunkt der Weiterfahrt, wenn er schon feststeht (automatisch beim Losfahren erkannt) */
+    private suspend fun weiterfahren(ab: Long? = null) {
         if (!wiederherstellen()) return
         mutex.withLock {
             val f = fahrt?.let { repo.fahrt(it.id) } ?: return@withLock
             if (beendet || !f.pausiert) return@withLock
+            wartend = null
             val jetzt = System.currentTimeMillis()
             val liste = f.zwischenzieleListe.toMutableList()
-            liste[liste.lastIndex] = liste.last().copy(ab = jetzt)
+            liste[liste.lastIndex] = liste.last().copy(ab = (ab ?: jetzt).coerceAtLeast(liste.last().an ?: 0L))
             repo.zwischenzieleSetzen(f.id, liste)
             fahrt = f.copy(zwischenziele = Zwischenziele.schreiben(liste))
             pausiert = false
@@ -326,6 +527,9 @@ class TrackingService : LifecycleService() {
             kursBasis = null
             updatesStarten()
         }
+        wartenJob?.cancel()
+        wartenJob = null
+        LiveStatus.zustand.update { it.copy(wartetAuf = null) }
         benachrichtigungAktualisieren()
     }
 
@@ -381,7 +585,16 @@ class TrackingService : LifecycleService() {
         updatesAktiv = false
     }
 
-    private suspend fun verarbeiten(loc: Location) = mutex.withLock {
+    private suspend fun verarbeiten(loc: Location) {
+        if (wartend != null) {
+            val los = mutex.withLock { wartend?.punkt(GeoPunkt(loc.latitude, loc.longitude, loc.time, loc.accuracy)) == true }
+            if (los) losfahren(loc)
+            return
+        }
+        aufzeichnen(loc)
+    }
+
+    private suspend fun aufzeichnen(loc: Location) = mutex.withLock {
         val f = fahrt ?: return@withLock
         if (beendet || pausiert) return@withLock
         letzteLocation = loc
@@ -421,7 +634,10 @@ class TrackingService : LifecycleService() {
                 if (pausiert) continue
                 val minuten = app.einstellungen.aktuell().autoStoppMinuten
                 val s = stillstand ?: continue
-                if (minuten > 0 && s.stillstandMillis(System.currentTimeMillis()) >= minuten * 60_000L) {
+                val still = s.stillstandMillis(System.currentTimeMillis())
+                // Mit dem Auto verbunden: Stau, Ampel oder Warten mit laufendem Motor beenden die Fahrt nicht
+                val ausgesetzt = auto != null && still < AUSSETZEN_MAX_MS
+                if (minuten > 0 && still >= minuten * 60_000L && !ausgesetzt) {
                     beenden(automatisch = true, startId = letzteStartId)
                     break
                 }
@@ -449,8 +665,21 @@ class TrackingService : LifecycleService() {
      * Beendet die Fahrt. [startId] ist die Start-ID zum Zeitpunkt des Beendens: kam inzwischen
      * ein neuer Start-Befehl, bleibt der Dienst für die neue Fahrt aktiv.
      */
-    private suspend fun beenden(automatisch: Boolean, startId: Int) = mutex.withLock {
-        if (beendet) return@withLock
+    private suspend fun beenden(automatisch: Boolean, startId: Int) {
+        if (!beendenIntern(automatisch, startId)) return
+        val g = auto
+        if (g != null && app.einstellungen.autoStartAktuell().aktiv) {
+            // Noch mit dem Auto verbunden: Die nächste Fahrt startet wieder beim Losfahren
+            wartenBeginnen(g)
+        } else {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf(startId)
+        }
+    }
+
+    /** @return true, wenn der Dienst danach nichts mehr zu tun hat (kein neuer Start dazwischen) */
+    private suspend fun beendenIntern(automatisch: Boolean, startId: Int): Boolean = mutex.withLock {
+        if (beendet) return@withLock false
         beendet = true
         updatesStoppen()
         if (automatisch) tickerJob = null else tickerJob?.cancel()
@@ -503,10 +732,7 @@ class TrackingService : LifecycleService() {
                 repo.alleKategorien().filter { it.aktiv },
             )
         }
-        if (startId == letzteStartId) {
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-            stopSelf(startId)
-        }
+        startId == letzteStartId
     }
 
     override fun onDestroy() {

@@ -11,6 +11,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
+import org.json.JSONObject
 
 private val Context.dataStore by preferencesDataStore(name = "einstellungen")
 
@@ -29,6 +31,31 @@ data class EinstellungenWerte(
     /** Sprachansage statt nur Warnton. */
     val blitzerAnsage: Boolean = true,
 )
+
+/** Bluetooth-Gerät (z. B. Freisprecheinrichtung des Autos), das eine Fahrt automatisch startet. */
+data class BtGeraet(val adresse: String, val name: String)
+
+data class AutoStartStand(
+    /** Fahrt automatisch starten, wenn das Handy mit einem der Geräte verbunden ist und losfährt. */
+    val aktiv: Boolean = false,
+    val geraete: List<BtGeraet> = emptyList(),
+) {
+    /** Android liefert die Adresse je nach Stelle in Groß- oder Kleinbuchstaben. */
+    fun geraet(adresse: String): BtGeraet? = geraete.firstOrNull { it.adresse.equals(adresse, ignoreCase = true) }
+}
+
+object BtGeraete {
+    fun lesen(json: String?): List<BtGeraet> {
+        if (json.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val a = JSONArray(json)
+            (0 until a.length()).map { i -> a.getJSONObject(i).let { BtGeraet(it.getString("adresse"), it.optString("name")) } }
+        }.getOrDefault(emptyList())
+    }
+
+    fun schreiben(liste: List<BtGeraet>): String =
+        JSONArray().apply { liste.forEach { put(JSONObject().put("adresse", it.adresse).put("name", it.name)) } }.toString()
+}
 
 data class SyncStand(
     val server: String = "",
@@ -73,6 +100,22 @@ class Einstellungen(private val context: Context) {
         val PRIVAT_HUELLE = stringPreferencesKey("privat_huelle")
         val PRIVAT_HUELLE_GESENDET = booleanPreferencesKey("privat_huelle_gesendet")
         val PRIVAT_OFFENE_HUELLE = stringPreferencesKey("privat_offene_huelle")
+        val AUTO_START = booleanPreferencesKey("auto_start")
+        val AUTO_START_GERAETE = stringPreferencesKey("auto_start_geraete")
+    }
+
+    /** Automatischer Start per Bluetooth – getrennt gespeichert, damit „Speichern“ anderer Einstellungen ihn nie überschreibt. */
+    val autoStart: Flow<AutoStartStand> = context.dataStore.data.map {
+        AutoStartStand(aktiv = it[Keys.AUTO_START] ?: false, geraete = BtGeraete.lesen(it[Keys.AUTO_START_GERAETE]))
+    }
+
+    suspend fun autoStartAktuell(): AutoStartStand = autoStart.first()
+
+    suspend fun autoStartSpeichern(stand: AutoStartStand) {
+        context.dataStore.edit {
+            it[Keys.AUTO_START] = stand.aktiv
+            it[Keys.AUTO_START_GERAETE] = BtGeraete.schreiben(stand.geraete)
+        }
     }
 
     /**

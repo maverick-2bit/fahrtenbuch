@@ -234,6 +234,9 @@ fun EinstellungenScreen(vm: EinstellungenViewModel = viewModel()) {
             }
         }
 
+        // ------------------------------------------------ Automatisch starten (Bluetooth)
+        AutoStartKarte()
+
         // ------------------------------------------------ Blitzer
         BlitzerKarte(w, vm::speichern)
 
