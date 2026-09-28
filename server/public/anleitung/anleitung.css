@@ -1,0 +1,9 @@
+/* Anleitung fürs iPhone: schmal und gut lesbar am Handy (Grundstil aus /admin/stil.css) */
+.anleitung { max-width: 760px; display: grid; gap: 16px; }
+.anleitung h1 { font-size: 26px; }
+.anleitung h2 { margin: 0 0 8px; }
+.anleitung ol, .anleitung ul { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
+.anleitung ul ul, .anleitung ol ul { margin-top: 6px; gap: 4px; }
+.anleitung p { margin: 10px 0 0; }
+.anleitung .unter { margin: 0; }
+.anleitung .hinweis { margin: 12px 0 0; }

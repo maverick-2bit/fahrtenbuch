@@ -219,6 +219,7 @@ function installHinweis() {
       "Tippe in Safari auf „Teilen“ (je nach iOS-Version erst auf „…“) und dann auf „Zum Home-Bildschirm“. " +
         "Öffne das Fahrtenbuch danach nur noch über das neue Symbol: Nur dort bleiben die Fahrten dauerhaft gespeichert und der Bildschirm während der Fahrt an.",
     ),
+    el("a", { href: "/anleitung/" }, "Zur Anleitung"),
   );
 }
 
@@ -1257,7 +1258,7 @@ function fahrtendeKarte(e) {
 function infoKarte() {
   return karte(
     el("h2", {}, "Über"),
-    el("p", { class: "klein" }, `Fahrtenbuch ${S.VERSION} · ${S.alsWebApp() ? "Web-App" : "im Browser"}`),
+    el("p", { class: "klein" }, `Fahrtenbuch ${S.VERSION} · ${S.alsWebApp() ? "Web-App" : "im Browser"} · `, el("a", { href: "/anleitung/" }, "Anleitung")),
     el(
       "p",
       { class: "klein" },
