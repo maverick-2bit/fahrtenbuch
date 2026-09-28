@@ -27,7 +27,7 @@ export function assetlinks(env: Env): Response {
   ]);
 }
 
-/** Gemeinsamer Einstieg für Cloudflare Pages (functions/) und den Worker in Tests und lokaler Entwicklung. */
+/** Einstieg des Workers: Schnittstelle und App-Links, alles andere liefern die statischen Dateien (public/). */
 export async function verarbeiten(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   try {

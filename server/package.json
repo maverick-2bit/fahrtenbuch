@@ -2,13 +2,13 @@
   "name": "fahrtenbuch-server",
   "private": true,
   "version": "0.5.0",
-  "description": "Fahrtenbuch Online: Datensicherung, Admin-Weboberfläche und Berichte (Cloudflare Worker + D1)",
+  "description": "Fahrtenbuch Online: Datensicherung, Verwaltungsseite, Berichte und iPhone-Web-App (Cloudflare Worker + D1)",
   "type": "module",
   "scripts": {
     "dev": "wrangler d1 migrations apply fahrtenbuch --local -c wrangler.test.jsonc && wrangler dev -c wrangler.test.jsonc",
     "test": "vitest run && node --test \"test-node/*.test.mjs\"",
     "typecheck": "tsc --noEmit",
-    "deploy": "wrangler d1 migrations apply fahrtenbuch --remote && wrangler pages deploy --branch master"
+    "deploy": "wrangler d1 migrations apply fahrtenbuch --remote && wrangler deploy"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",

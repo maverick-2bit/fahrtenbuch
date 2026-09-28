@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { adresse, adresseFormatieren, koordinaten, route } from "../src/geo";
 import { HttpFehler } from "../src/hilfen";
 
-const BASIS = "https://fahrtenbuch.2bit.at";
+const BASIS = "https://fahrtenbuch.smarte.events";
 const PASSWORT = "Test-Passwort-fuer-Vitest-42";
 
 let code = "";

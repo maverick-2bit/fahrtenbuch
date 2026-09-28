@@ -5,7 +5,7 @@ export interface Env {
   ADMIN_PASSWORT_SHA256: string;
   APP_PAKET: string;
   APP_ZERTIFIKAT_SHA256: string;
-  /** Adresse, die in QR-Links steht, z. B. https://fahrtenbuch.2bit.at */
+  /** Adresse, die in QR-Links steht, z. B. https://fahrtenbuch.smarte.events */
   OEFFENTLICHE_ADRESSE?: string;
 }
 

@@ -49,7 +49,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="fahrtenbuch.2bit.at"
+                    android:host="fahrtenbuch.smarte.events"
                     android:pathPrefix="/verbinden" />
             </intent-filter>
             <!-- Rückfallweg der Verbindungsseite -->

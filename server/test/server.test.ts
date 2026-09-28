@@ -1,7 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 
-const BASIS = "https://fahrtenbuch.2bit.at";
+const BASIS = "https://fahrtenbuch.smarte.events";
 const PASSWORT = "Test-Passwort-fuer-Vitest-42";
 
 async function anfrage(pfad: string, init: RequestInit = {}) {

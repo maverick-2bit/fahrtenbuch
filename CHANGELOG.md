@@ -2,9 +2,12 @@
 
 Alle Änderungen am Fahrtenbuch (Android-App und Server). Versionen nach SemVer; App und Server tragen dieselbe Nummer.
 
-## [0.5.0] – in Arbeit
+## [0.5.0] – 2026-09-28
 
 ### Neu
+- Online-Sicherung zieht um: **fahrtenbuch.smarte.events** im Cloudflare-Konto der s/e smarte events OG,
+  als Cloudflare Worker (statt Pages, dort investiert Cloudflare nicht mehr), Datenbank in der EU.
+  App-Links und erlaubter Server der Android-App zeigen auf die neue Adresse.
 - Privatfahrten mit persönlichem PIN: Kategorien lassen sich als privat markieren. Adressen, Zwischenziele,
   Notiz und Koordinaten solcher Fahrten werden am Handy verschlüsselt (AES-GCM, Schlüssel aus dem PIN per
   PBKDF2-SHA-256) und nur so gesichert. Datum, Zeiten und Kilometer bleiben für Berichte sichtbar.

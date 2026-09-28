@@ -21,8 +21,8 @@ data class SyncAntwort(
 /** Datenformat zwischen App und Server (siehe server/src/sync.ts) – ohne Android-Abhängigkeiten. */
 object SyncFormat {
     /** Nur dieser Server wird akzeptiert – ein fremder Link kann die Fahrten nicht umleiten. */
-    val ERLAUBTE_SERVER = setOf("https://fahrtenbuch.2bit.at")
-    const val STANDARD_SERVER = "https://fahrtenbuch.2bit.at"
+    val ERLAUBTE_SERVER = setOf("https://fahrtenbuch.smarte.events")
+    const val STANDARD_SERVER = "https://fahrtenbuch.smarte.events"
     private val CODE = Regex("^[A-Za-z0-9_-]{20,100}$")
 
     private fun JSONObject.putOrNull(key: String, wert: Any?): JSONObject = put(key, wert ?: JSONObject.NULL)
