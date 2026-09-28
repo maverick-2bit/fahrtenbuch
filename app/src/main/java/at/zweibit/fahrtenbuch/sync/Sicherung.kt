@@ -7,11 +7,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
 sealed interface SyncErgebnis {
-    data class Ok(val gesendet: Int) : SyncErgebnis
+    /** @param wartenAufPin Einträge von Privatfahrten, die erst mit festgelegtem PIN übertragen werden */
+    data class Ok(val gesendet: Int, val wartenAufPin: Int = 0) : SyncErgebnis
     data object NichtVerbunden : SyncErgebnis
     /** Code ungültig oder Fahrer gesperrt – erneutes Versuchen hilft nicht. */
     data class Abgewiesen(val text: String) : SyncErgebnis
@@ -24,6 +26,7 @@ private class HttpAntwort(val code: Int, val text: String)
 /** Überträgt das Änderungsprotokoll an die Online-Sicherung. */
 object Sicherung {
     private const val JE_ANFRAGE = 100
+    private const val HOECHSTENS = 5_000
     private val mutex = Mutex()
 
     val geraet: String get() = "Android ${Build.VERSION.RELEASE} · ${Build.MANUFACTURER} ${Build.MODEL}"
@@ -51,14 +54,14 @@ object Sicherung {
     }
 
     private fun fehlertext(a: HttpAntwort): String =
-        runCatching { org.json.JSONObject(a.text).optString("fehler") }.getOrNull()?.takeIf { it.isNotBlank() }
+        runCatching { JSONObject(a.text).optString("fehler") }.getOrNull()?.takeIf { it.isNotBlank() }
             ?: "Server meldet Fehler ${a.code}"
 
     /** Prüft einen Code und liefert den Namen des Fahrers. */
     suspend fun pruefen(v: Verbindung): Result<String> = runCatching {
         val a = anfrage("${v.server}/api/v1/ich", v.code, null)
         if (a.code != 200) error(fehlertext(a))
-        org.json.JSONObject(a.text).getJSONObject("fahrer").getString("name")
+        JSONObject(a.text).getJSONObject("fahrer").getString("name")
     }
 
     suspend fun synchronisieren(app: FahrtenbuchApp): SyncErgebnis = mutex.withLock {
@@ -66,15 +69,24 @@ object Sicherung {
         if (!stand.verbunden) return@withLock SyncErgebnis.NichtVerbunden
         val repo = app.repository
         repo.altbestandProtokollieren()
-        var gesendet = 0
         try {
-            var runde = 0
-            while (true) {
-                val offen = repo.protokollOffeneEintraege(JE_ANFRAGE)
-                // Auch ohne offene Einträge einmal senden: Kategorien, Fahrzeugdaten und „zuletzt gesichert“
-                if (offen.isEmpty() && runde > 0) break
+            val kategorien = repo.alleKategorien()
+            val privat = app.einstellungen.privatAktuell()
+            val datenSchluessel = if (privat.hatPin) Krypto.ausB64(privat.datenSchluessel) else null
+            val vorbereitet = SyncFormat.vorbereiten(
+                repo.protokollOffeneEintraege(HOECHSTENS),
+                kategorien.filter { it.privat }.map { it.id }.toSet(),
+                datenSchluessel,
+            )
+            if (vorbereitet.entfallen.isNotEmpty()) repo.protokollEntfallen(vorbereitet.entfallen)
+            // Hülle des Datenschlüssels mitschicken, bis der Server sie bestätigt hat
+            var huelle = if (privat.hatPin && !privat.huelleGesendet) JSONObject(privat.huelle) else null
+            // Auch ohne Einträge einmal senden: Kategorien, Fahrzeugdaten, Schlüssel, „zuletzt gesichert“
+            val stuecke = vorbereitet.senden.chunked(JE_ANFRAGE).ifEmpty { listOf(emptyList()) }
+            var gesendet = 0
+            for (stueck in stuecke) {
                 val body = SyncFormat.anfrage(
-                    BuildConfig.VERSION_NAME, geraet, app.einstellungen.aktuell(), repo.alleKategorien(), offen,
+                    BuildConfig.VERSION_NAME, geraet, app.einstellungen.aktuell(), kategorien, stueck, huelle,
                 )
                 val a = anfrage("${stand.server}/api/v1/sync", stand.code, body)
                 when (a.code) {
@@ -86,15 +98,20 @@ object Sicherung {
                     }
                     else -> error(fehlertext(a))
                 }
+                if (huelle != null) {
+                    app.einstellungen.privatHuelleGesendet(privat.huelle)
+                    huelle = null
+                }
                 val antwort = SyncFormat.antwort(a.text)
                 if (antwort.angenommen.isNotEmpty()) repo.protokollAngenommen(antwort.angenommen)
                 antwort.abgelehnt.forEach { (id, grund) -> if (id.isNotBlank()) repo.protokollAbgelehnt(id, grund) }
                 gesendet += antwort.angenommen.size
-                runde++
-                if (offen.size < JE_ANFRAGE) break
             }
-            app.einstellungen.syncErgebnis(System.currentTimeMillis(), "")
-            SyncErgebnis.Ok(gesendet)
+            app.einstellungen.syncErgebnis(
+                System.currentTimeMillis(),
+                if (vorbereitet.wartenAufPin > 0) "Privatfahrten warten auf deinen PIN." else "",
+            )
+            SyncErgebnis.Ok(gesendet, vorbereitet.wartenAufPin)
         } catch (e: Exception) {
             val text = when (e) {
                 is java.net.UnknownHostException -> "Keine Internetverbindung."
@@ -104,5 +121,19 @@ object Sicherung {
             app.einstellungen.syncErgebnis(null, text)
             SyncErgebnis.Fehler(text)
         }
+    }
+}
+
+/** PIN für Privatfahrten: legt den Datenschlüssel an (einmalig) und verpackt ihn mit dem PIN. */
+object PrivatSchutz {
+    suspend fun pinFestlegen(app: FahrtenbuchApp, pin: String) {
+        require(pin.length >= Krypto.MIN_PIN && pin.all { it.isDigit() }) { "PIN muss mindestens ${Krypto.MIN_PIN} Ziffern haben" }
+        val stand = app.einstellungen.privatAktuell()
+        val (dek, huelle) = withContext(Dispatchers.Default) {
+            val dek = if (stand.datenSchluessel.isNotBlank()) Krypto.ausB64(stand.datenSchluessel) else Krypto.zufall(32)
+            dek to Krypto.huelleErstellen(pin, dek)
+        }
+        app.einstellungen.privatSpeichern(Krypto.b64(dek), huelle.json().toString())
+        SyncPlaner.bald(app)
     }
 }

@@ -70,6 +70,60 @@ class SyncFormatTest {
         assertEquals("offen", d.getString("status"))
     }
 
+    private val schluessel = ByteArray(32) { it.toByte() }
+
+    private fun eintrag(id: String, uuid: String, kategorie: Long?, status: String = "fertig", aktion: String = "neu") =
+        ProtokollEintrag(
+            eintragId = id, fahrtUuid = uuid, aktion = aktion, zeit = 1,
+            daten = SyncFormat.fahrtDaten(
+                Fahrt(uuid = uuid, startZeit = 1, startAdresse = "Zuhause", endeAdresse = "Therme", notiz = "Wellness",
+                    startLat = 47.2, startLon = 14.8, distanzMeter = 50_000.0, kategorieId = kategorie, status = status)
+            ).toString(),
+        )
+
+    @Test
+    fun privatfahrtenGehenNurVerschluesseltHinaus() {
+        val v = SyncFormat.vorbereiten(listOf(eintrag("e-1", "f-dienst", 1), eintrag("e-2", "f-privat", 2)), setOf(2L), schluessel)
+        assertEquals(2, v.senden.size)
+        assertEquals(0, v.wartenAufPin)
+        val dienst = JSONObject(v.senden[0].daten)
+        assertEquals("Zuhause", dienst.getString("startAdresse"))
+        assertTrue(dienst.isNull("geheim"))
+
+        val privat = JSONObject(v.senden[1].daten)
+        assertEquals("", privat.getString("startAdresse"))
+        assertEquals("", privat.getString("notiz"))
+        assertTrue(privat.isNull("startLat"))
+        assertEquals(50_000.0, privat.getDouble("distanzMeter"), 0.0) // Kilometer bleiben sichtbar
+        val klar = JSONObject(at.zweibit.fahrtenbuch.sync.Krypto.geheimOeffnen(schluessel, privat.getJSONObject("geheim")))
+        assertEquals("Therme", klar.getString("endeAdresse"))
+        assertEquals("Wellness", klar.getString("notiz"))
+        assertEquals(14.8, klar.getDouble("startLon"), 0.0)
+        assertTrue(!v.senden[1].daten.contains("Therme"))
+    }
+
+    @Test
+    fun ohnePinBleibenPrivatfahrtenSamtFolgeeintraegenAmHandy() {
+        val v = SyncFormat.vorbereiten(
+            listOf(
+                eintrag("e-1", "f-privat", 2),
+                eintrag("e-2", "f-dienst", 1),
+                // später auf „Dienstlich“ umgestellt: darf nicht vor dem ersten Eintrag ankommen
+                eintrag("e-3", "f-privat", 1, aktion = "geaendert"),
+            ),
+            setOf(2L), null,
+        )
+        assertEquals(listOf("e-2"), v.senden.map { it.eintragId })
+        assertEquals(2, v.wartenAufPin)
+    }
+
+    @Test
+    fun nichtZugeordneteAlteintraegeEntfallen() {
+        val v = SyncFormat.vorbereiten(listOf(eintrag("e-1", "f-1", null, status = "offen"), eintrag("e-2", "f-1", 1)), setOf(2L), null)
+        assertEquals(listOf("e-1"), v.entfallen)
+        assertEquals(listOf("e-2"), v.senden.map { it.eintragId })
+    }
+
     @Test
     fun antwortLesen() {
         val a = SyncFormat.antwort(

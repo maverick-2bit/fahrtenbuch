@@ -87,7 +87,7 @@ export async function admin(req: Request, env: Env, url: URL): Promise<Response>
     const [fahrten, kategorien, vorher] = await env.DB.batch([
       env.DB.prepare(
         `SELECT uuid, version, start_zeit, ende_zeit, start_adresse, ende_adresse, zwischenziele, distanz_meter,
-                kategorie_id, kategorie_name, notiz, status
+                kategorie_id, kategorie_name, notiz, status, geheim
          FROM fahrten WHERE fahrer_id = ? AND geloescht = 0 AND start_zeit >= ? AND start_zeit < ?
          ORDER BY start_zeit`,
       ).bind(fahrerId, von, bis),

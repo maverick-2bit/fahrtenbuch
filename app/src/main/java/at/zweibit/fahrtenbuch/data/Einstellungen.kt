@@ -40,6 +40,14 @@ data class SyncStand(
     val verbunden: Boolean get() = server.isNotBlank() && code.isNotBlank()
 }
 
+data class PrivatStand(
+    val datenSchluessel: String = "",
+    val huelle: String = "",
+    val huelleGesendet: Boolean = false,
+) {
+    val hatPin: Boolean get() = datenSchluessel.isNotBlank() && huelle.isNotBlank()
+}
+
 class Einstellungen(private val context: Context) {
     private object Keys {
         val AUTO_STOPP = intPreferencesKey("auto_stopp_minuten")
@@ -56,6 +64,36 @@ class Einstellungen(private val context: Context) {
         val SYNC_FAHRER = stringPreferencesKey("sync_fahrer")
         val SYNC_ZULETZT = longPreferencesKey("sync_zuletzt")
         val SYNC_MELDUNG = stringPreferencesKey("sync_meldung")
+        val PRIVAT_DEK = stringPreferencesKey("privat_datenschluessel")
+        val PRIVAT_HUELLE = stringPreferencesKey("privat_huelle")
+        val PRIVAT_HUELLE_GESENDET = booleanPreferencesKey("privat_huelle_gesendet")
+    }
+
+    /**
+     * Schlüssel für Privatfahrten: Der Datenschlüssel bleibt auf dem Handy; an den Server geht nur die
+     * mit dem PIN verschlüsselte Hülle. Der PIN selbst wird nirgends gespeichert.
+     */
+    val privat: Flow<PrivatStand> = context.dataStore.data.map {
+        PrivatStand(
+            datenSchluessel = it[Keys.PRIVAT_DEK].orEmpty(),
+            huelle = it[Keys.PRIVAT_HUELLE].orEmpty(),
+            huelleGesendet = it[Keys.PRIVAT_HUELLE_GESENDET] ?: false,
+        )
+    }
+
+    suspend fun privatAktuell(): PrivatStand = privat.first()
+
+    suspend fun privatSpeichern(datenSchluessel: String, huelle: String) {
+        context.dataStore.edit {
+            it[Keys.PRIVAT_DEK] = datenSchluessel
+            it[Keys.PRIVAT_HUELLE] = huelle
+            it[Keys.PRIVAT_HUELLE_GESENDET] = false
+        }
+    }
+
+    suspend fun privatHuelleGesendet(huelle: String) {
+        // Nur bestätigen, wenn inzwischen kein neuer PIN festgelegt wurde
+        context.dataStore.edit { if (it[Keys.PRIVAT_HUELLE] == huelle) it[Keys.PRIVAT_HUELLE_GESENDET] = true }
     }
 
     /** Verbindung zur Online-Sicherung – getrennt gespeichert, damit „Speichern“ anderer Einstellungen sie nie überschreibt. */
@@ -77,6 +115,8 @@ class Einstellungen(private val context: Context) {
             it[Keys.SYNC_CODE] = code
             it[Keys.SYNC_FAHRER] = fahrer
             it[Keys.SYNC_MELDUNG] = ""
+            // Neue Verbindung: Schlüsselhülle (falls vorhanden) erneut übertragen
+            it[Keys.PRIVAT_HUELLE_GESENDET] = false
         }
     }
 

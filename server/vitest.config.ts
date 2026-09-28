@@ -21,6 +21,8 @@ export default defineConfig(async () => {
     ],
     test: {
       setupFiles: ["./test/setup.ts"],
+      // test-node/ läuft mit Node (PBKDF2 mit vielen Runden gibt es in der Workers-Laufzeit nicht)
+      include: ["test/**/*.test.ts"],
     },
   };
 });

@@ -48,8 +48,10 @@ object SyncFormat {
         e: EinstellungenWerte,
         kategorien: List<Kategorie>,
         eintraege: List<ProtokollEintrag>,
+        schluesselHuelle: JSONObject? = null,
     ): String = JSONObject()
         .put("app", JSONObject().put("version", appVersion).put("geraet", geraet))
+        .apply { if (schluesselHuelle != null) put("schluessel", schluesselHuelle) }
         .put(
             "einstellungen",
             JSONObject()
@@ -65,7 +67,7 @@ object SyncFormat {
                 kategorien.forEach { k ->
                     put(
                         JSONObject().put("id", k.id).put("name", k.name).put("farbe", k.farbe)
-                            .put("sortierung", k.sortierung).put("aktiv", k.aktiv)
+                            .put("sortierung", k.sortierung).put("aktiv", k.aktiv).put("privat", k.privat)
                     )
                 }
             },
@@ -82,6 +84,57 @@ object SyncFormat {
             },
         )
         .toString()
+
+    /** Diese Felder einer Privatfahrt gehen nur verschlüsselt an den Server. */
+    private val GEHEIME_FELDER = listOf("startAdresse", "endeAdresse", "zwischenziele", "notiz", "startLat", "startLon", "endeLat", "endeLon")
+
+    /** Ersetzt die Details einer Privatfahrt durch deren verschlüsselte Form (`geheim`). */
+    fun verschluesseln(daten: JSONObject, datenSchluessel: ByteArray): JSONObject {
+        val klar = JSONObject()
+        GEHEIME_FELDER.forEach { klar.put(it, daten.opt(it) ?: JSONObject.NULL) }
+        val ergebnis = JSONObject(daten.toString())
+        listOf("startAdresse", "endeAdresse", "zwischenziele", "notiz").forEach { ergebnis.put(it, "") }
+        listOf("startLat", "startLon", "endeLat", "endeLon").forEach { ergebnis.put(it, JSONObject.NULL) }
+        ergebnis.put("geheim", Krypto.geheimErstellen(datenSchluessel, klar.toString()))
+        return ergebnis
+    }
+
+    /**
+     * @param entfallen Einträge noch nicht zugeordneter Fahrten (aus Version 0.4) – werden nie übertragen,
+     *   weil noch offen war, ob es eine Privatfahrt ist; der Eintrag beim Zuordnen ersetzt sie.
+     */
+    data class Vorbereitet(val senden: List<ProtokollEintrag>, val wartenAufPin: Int, val entfallen: List<String> = emptyList())
+
+    /**
+     * Bereitet Protokolleinträge für die Übertragung vor: Einträge von Privatfahrten werden
+     * verschlüsselt. Ohne PIN bleiben sie auf dem Handy – samt allen späteren Einträgen derselben
+     * Fahrt, damit die Reihenfolge der Fassungen am Server stimmt.
+     */
+    fun vorbereiten(eintraege: List<ProtokollEintrag>, privateKategorien: Set<Long>, datenSchluessel: ByteArray?): Vorbereitet {
+        val senden = mutableListOf<ProtokollEintrag>()
+        val entfallen = mutableListOf<String>()
+        val wartendeFahrten = mutableSetOf<String>()
+        var warten = 0
+        for (e in eintraege) {
+            val d = JSONObject(e.daten)
+            if (d.optString("status") != "fertig" && e.aktion != "geloescht") {
+                entfallen += e.eintragId
+                continue
+            }
+            val kategorie = if (d.isNull("kategorieId")) null else d.optLong("kategorieId")
+            val privat = kategorie != null && kategorie in privateKategorien
+            when {
+                e.fahrtUuid in wartendeFahrten -> warten++
+                !privat -> senden += e
+                datenSchluessel == null -> {
+                    wartendeFahrten += e.fahrtUuid
+                    warten++
+                }
+                else -> senden += e.copy(daten = verschluesseln(d, datenSchluessel).toString())
+            }
+        }
+        return Vorbereitet(senden, warten, entfallen)
+    }
 
     fun antwort(json: String): SyncAntwort {
         val o = JSONObject(json)

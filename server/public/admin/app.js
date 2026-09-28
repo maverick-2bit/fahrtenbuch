@@ -5,6 +5,11 @@ const $inhalt = document.getElementById("inhalt");
 const $nav = document.getElementById("nav");
 const $dialog = document.getElementById("dialog");
 
+import { entschluesseln, schluesselOeffnen } from "./geheim.js";
+
+/** Entsperrte Privatfahrten je Fahrer (nur im Arbeitsspeicher dieser Seite, bis zum Neuladen). */
+const entsperrt = new Map();
+
 // ------------------------------------------------------------------ Hilfen
 
 function el(tag, attrs = {}, ...kinder) {
@@ -80,6 +85,7 @@ function zwischenziele(json) {
 }
 
 function strecke(f) {
+  if (f.gesperrt) return "Privatfahrt · Details nur mit PIN";
   return [f.start_adresse || "?", ...zwischenziele(f.zwischenziele).map((z) => z.adresse || "?"), f.ende_adresse || "?"].join(" → ");
 }
 
@@ -405,6 +411,7 @@ async function fahrtenbuch(id) {
   }
   const zr = zeitraum();
   const d = await api(`/api/admin/fahrten?fahrer=${encodeURIComponent(id)}&von=${zr.von}&bis=${zr.bis}`);
+  const privat = await privatfahrtenAufbereiten(id, d.fahrten);
   const b = berichtErstellen(d, ansicht.filter);
   const f = d.fahrer;
   const fahrzeug = [f.fahrzeug, f.kennzeichen].filter(Boolean).join(" · ");
@@ -419,7 +426,7 @@ async function fahrtenbuch(id) {
     ),
     el("h1", { class: "nicht-drucken" }, f.name),
     el("p", { class: "unter nicht-drucken" }, [fahrzeug, `Letzte Sicherung: ${relativ(f.zuletzt_sync)}`].filter(Boolean).join(" · ")),
-    zeitraumLeiste(zr, () => csvHerunterladen(f, zr, b)),
+    zeitraumLeiste(zr, () => csvHerunterladen(f, zr, b), privat.anzahl > 0 ? privatKnopf(id, d.fahrer, privat) : null),
     kategorieChips(b.alle),
     b.offen.length
       ? el(
@@ -435,7 +442,82 @@ async function fahrtenbuch(id) {
   );
 }
 
-function zeitraumLeiste(zr, csv) {
+/**
+ * Privatfahrten: Details mit dem Schlüssel des Fahrers entschlüsseln, falls entsperrt,
+ * sonst als gesperrt kennzeichnen. Datum, Zeiten und Kilometer sind immer sichtbar.
+ */
+async function privatfahrtenAufbereiten(fahrerId, fahrten) {
+  const schluessel = entsperrt.get(fahrerId);
+  let anzahl = 0;
+  let gesperrt = 0;
+  for (const f of fahrten) {
+    if (!f.geheim) continue;
+    anzahl++;
+    if (schluessel) {
+      try {
+        const x = await entschluesseln(schluessel, JSON.parse(f.geheim));
+        Object.assign(f, { start_adresse: x.startAdresse || "", ende_adresse: x.endeAdresse || "", zwischenziele: x.zwischenziele || "", notiz: x.notiz || "" });
+        continue;
+      } catch {
+        /* passt nicht zum Schlüssel – gesperrt lassen */
+      }
+    }
+    f.gesperrt = true;
+    gesperrt++;
+  }
+  return { anzahl, gesperrt };
+}
+
+function privatKnopf(fahrerId, fahrer, privat) {
+  if (privat.gesperrt === 0 && entsperrt.has(fahrerId)) {
+    return el("button", { class: "knopf", onclick: () => (entsperrt.delete(fahrerId), route()) }, "Privatfahrten sperren");
+  }
+  return el("button", { class: "knopf", onclick: () => pinDialog(fahrerId, fahrer) }, `Privatfahrten anzeigen (${privat.anzahl})`);
+}
+
+function pinDialog(fahrerId, fahrer) {
+  const huelle = fahrer.schluessel ? JSON.parse(fahrer.schluessel) : null;
+  if (!huelle) {
+    dialog(
+      el("h2", {}, "Kein PIN hinterlegt"),
+      el("p", {}, `${fahrer.name} hat in der App noch keinen PIN für Privatfahrten festgelegt.`),
+      el("div", { class: "aktionen" }, el("button", { class: "knopf haupt", onclick: dialogZu }, "Schließen")),
+    );
+    return;
+  }
+  const pin = el("input", { type: "password", inputmode: "numeric", autocomplete: "off", required: true, placeholder: "PIN" });
+  const meldung = el("p", { class: "fehler" });
+  const los = el("button", { class: "knopf haupt", type: "submit" }, "Anzeigen");
+  dialog(
+    el("h2", {}, `Privatfahrten von ${fahrer.name}`),
+    el("p", { class: "klein" }, "Der PIN wird nur hier im Browser verwendet und nirgends gespeichert oder übertragen."),
+    el(
+      "form",
+      {
+        onsubmit: async (e) => {
+          e.preventDefault();
+          meldung.textContent = "";
+          los.disabled = true;
+          try {
+            entsperrt.set(fahrerId, await schluesselOeffnen(huelle, pin.value));
+            dialogZu();
+            route();
+          } catch {
+            meldung.textContent = "PIN falsch.";
+          } finally {
+            los.disabled = false;
+          }
+        },
+      },
+      pin,
+      meldung,
+      el("div", { class: "aktionen" }, el("button", { class: "knopf", type: "button", onclick: dialogZu }, "Abbrechen"), los),
+    ),
+  );
+  pin.focus();
+}
+
+function zeitraumLeiste(zr, csv, zusatz) {
   const segment = el(
     "div",
     { class: "segment", role: "group", "aria-label": "Zeitraum" },
@@ -474,6 +556,7 @@ function zeitraumLeiste(zr, csv) {
     segment,
     wahl,
     el("div", { class: "fuell" }),
+    zusatz,
     el("button", { class: "knopf", onclick: () => window.print() }, "Drucken / PDF"),
     el("button", { class: "knopf", onclick: csv }, "CSV für Excel"),
   );
@@ -604,6 +687,19 @@ const FELDER = [
 
 async function protokollDialog(f, kats) {
   const { fassungen } = await api(`/api/admin/fahrten/${encodeURIComponent(f.uuid)}/protokoll`);
+  const schluessel = entsperrt.get(ansicht.fahrer);
+  for (const v of fassungen) {
+    if (!v.daten.geheim) continue;
+    if (schluessel) {
+      try {
+        Object.assign(v.daten, await entschluesseln(schluessel, v.daten.geheim));
+        continue;
+      } catch {
+        /* unten als verschlüsselt kennzeichnen */
+      }
+    }
+    Object.assign(v.daten, { startAdresse: "verschlüsselt", endeAdresse: "verschlüsselt", zwischenziele: "", notiz: "verschlüsselt" });
+  }
   const katName = (id) => (id === null || id === undefined ? "ohne" : kats.get(id)?.name ?? `Kategorie ${id}`);
   const wert = (feld, format, v) => (feld === "kategorieId" ? katName(v) : format(v));
   const aktionen = { neu: "angelegt", geaendert: "geändert", geloescht: "gelöscht" };
@@ -649,7 +745,7 @@ function csvHerunterladen(f, zr, b) {
         datum(z.f.start_zeit),
         zeit(z.f.start_zeit),
         z.f.ende_zeit ? zeit(z.f.ende_zeit) : "",
-        z.f.start_adresse,
+        z.f.gesperrt ? "Privatfahrt (gesperrt)" : z.f.start_adresse,
         zwischenziele(z.f.zwischenziele).map((x) => x.adresse).join(" / "),
         z.f.ende_adresse,
         km(z.km),

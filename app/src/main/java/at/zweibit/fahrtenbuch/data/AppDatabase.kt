@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Kategorie::class, Fahrt::class, Trackpunkt::class, ProtokollEintrag::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -43,6 +43,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v0.5: Kategorien können privat sein – deren Fahrten werden nur verschlüsselt gesichert. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE kategorien ADD COLUMN privat INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE kategorien SET privat = 1 WHERE lower(trim(name)) = 'privat'")
+            }
+        }
+
         // Exakt wie von Room erzeugt (siehe schemas/…/3.json) – sonst bricht Room beim Öffnen ab
         private const val SQL_PROTOKOLL =
             "CREATE TABLE IF NOT EXISTS `protokoll` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
@@ -51,19 +59,19 @@ abstract class AppDatabase : RoomDatabase() {
 
         fun erstellen(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "fahrtenbuch.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         // Startkategorien; können in den Einstellungen geändert oder gelöscht werden.
                         val vorgaben = listOf(
-                            "Dienstlich" to KategorieFarben.PALETTE[0],
-                            "Privat" to KategorieFarben.PALETTE[1],
-                            "Arbeitsweg" to KategorieFarben.PALETTE[2],
+                            Triple("Dienstlich", KategorieFarben.PALETTE[0], 0),
+                            Triple("Privat", KategorieFarben.PALETTE[1], 1),
+                            Triple("Arbeitsweg", KategorieFarben.PALETTE[2], 0),
                         )
-                        vorgaben.forEachIndexed { i, (name, farbe) ->
+                        vorgaben.forEachIndexed { i, (name, farbe, privat) ->
                             db.execSQL(
-                                "INSERT INTO kategorien (name, farbe, sortierung, aktiv) VALUES (?, ?, ?, 1)",
-                                arrayOf<Any>(name, farbe, i + 1),
+                                "INSERT INTO kategorien (name, farbe, sortierung, aktiv, privat) VALUES (?, ?, ?, 1, ?)",
+                                arrayOf<Any>(name, farbe, i + 1, privat),
                             )
                         }
                     }

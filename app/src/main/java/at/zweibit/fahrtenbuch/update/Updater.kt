@@ -41,7 +41,7 @@ sealed interface UpdateStatus {
  * Schlüssel signiert ist, bleiben alle Fahrten erhalten.
  */
 object Updater {
-    const val REPO = "maverick-2bit/fahrtenbuch"
+    const val REPO = "smarte-events/fahrtenbuch"
     private const val API = "https://api.github.com/repos/$REPO/releases/latest"
     private const val PREFS = "update"
     private const val LETZTE_PRUEFUNG = "letzte_pruefung"
