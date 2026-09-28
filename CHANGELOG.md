@@ -22,6 +22,8 @@ Alle Änderungen am Fahrtenbuch (Android-App und Server). Versionen nach SemVer;
 - Neues Gerät: `/api/v1/ich` liefert die Schlüsselhülle, die Web-App übernimmt damit per PIN den bisherigen
   Datenschlüssel – sonst wären die schon gesicherten Privatfahrten nicht mehr lesbar.
 - Verbindungsseite: am iPhone Anleitung zur Web-App und „Link kopieren“.
+- Android-App: Neues Handy oder neu installiert – hat der Server schon einen PIN-Schlüssel, fragt die App
+  nach dem bisherigen PIN und übernimmt ihn, statt einen neuen anzulegen („PIN vergessen“ bleibt möglich).
 
 ### Geändert
 - Fahrten werden erst ab dem Zuordnen einer Kategorie ins Änderungsprotokoll geschrieben und gesichert, damit

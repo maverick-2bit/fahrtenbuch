@@ -50,6 +50,10 @@ object Krypto {
         }
     }
 
+    /** Zwei Hüllen (JSON) sind dieselbe – unabhängig von der Reihenfolge der Felder (der Server ordnet sie um). */
+    fun huelleGleich(a: String, b: String): Boolean =
+        runCatching { Huelle.aus(a) == Huelle.aus(b) }.getOrDefault(false)
+
     fun huelleErstellen(
         pin: String,
         datenSchluessel: ByteArray,

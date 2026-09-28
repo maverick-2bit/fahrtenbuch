@@ -44,8 +44,13 @@ data class PrivatStand(
     val datenSchluessel: String = "",
     val huelle: String = "",
     val huelleGesendet: Boolean = false,
+    /** Hülle eines früheren Geräts vom Server – muss erst mit dem bisherigen PIN übernommen werden. */
+    val offeneHuelle: String = "",
 ) {
     val hatPin: Boolean get() = datenSchluessel.isNotBlank() && huelle.isNotBlank()
+
+    /** Privatfahrten dürfen hinaus: PIN festgelegt und keine Hülle eines früheren Geräts mehr offen. */
+    val bereit: Boolean get() = hatPin && offeneHuelle.isBlank()
 }
 
 class Einstellungen(private val context: Context) {
@@ -67,6 +72,7 @@ class Einstellungen(private val context: Context) {
         val PRIVAT_DEK = stringPreferencesKey("privat_datenschluessel")
         val PRIVAT_HUELLE = stringPreferencesKey("privat_huelle")
         val PRIVAT_HUELLE_GESENDET = booleanPreferencesKey("privat_huelle_gesendet")
+        val PRIVAT_OFFENE_HUELLE = stringPreferencesKey("privat_offene_huelle")
     }
 
     /**
@@ -78,16 +84,29 @@ class Einstellungen(private val context: Context) {
             datenSchluessel = it[Keys.PRIVAT_DEK].orEmpty(),
             huelle = it[Keys.PRIVAT_HUELLE].orEmpty(),
             huelleGesendet = it[Keys.PRIVAT_HUELLE_GESENDET] ?: false,
+            offeneHuelle = it[Keys.PRIVAT_OFFENE_HUELLE].orEmpty(),
         )
     }
 
     suspend fun privatAktuell(): PrivatStand = privat.first()
 
+    /** Neuer oder geänderter PIN – ersetzt auch eine noch offene Hülle eines früheren Geräts („PIN vergessen“). */
     suspend fun privatSpeichern(datenSchluessel: String, huelle: String) {
         context.dataStore.edit {
             it[Keys.PRIVAT_DEK] = datenSchluessel
             it[Keys.PRIVAT_HUELLE] = huelle
             it[Keys.PRIVAT_HUELLE_GESENDET] = false
+            it.remove(Keys.PRIVAT_OFFENE_HUELLE)
+        }
+    }
+
+    /** Datenschlüssel eines früheren Geräts übernommen: Die Hülle liegt schon am Server. */
+    suspend fun privatUebernehmen(datenSchluessel: String, huelle: String) {
+        context.dataStore.edit {
+            it[Keys.PRIVAT_DEK] = datenSchluessel
+            it[Keys.PRIVAT_HUELLE] = huelle
+            it[Keys.PRIVAT_HUELLE_GESENDET] = true
+            it.remove(Keys.PRIVAT_OFFENE_HUELLE)
         }
     }
 
@@ -109,14 +128,37 @@ class Einstellungen(private val context: Context) {
 
     suspend fun syncAktuell(): SyncStand = sync.first()
 
-    suspend fun syncVerbinden(server: String, code: String, fahrer: String) {
+    /**
+     * @param serverHuelle Schlüsselhülle, die der Server für diesen Fahrer schon hat (früheres Gerät), sonst null
+     * @param gleicheHuelle vergleicht zwei Hüllen inhaltlich (Reihenfolge der JSON-Felder egal)
+     */
+    suspend fun syncVerbinden(
+        server: String,
+        code: String,
+        fahrer: String,
+        serverHuelle: String? = null,
+        gleicheHuelle: (String, String) -> Boolean = { a, b -> a == b },
+    ) {
         context.dataStore.edit {
             it[Keys.SYNC_SERVER] = server
             it[Keys.SYNC_CODE] = code
             it[Keys.SYNC_FAHRER] = fahrer
             it[Keys.SYNC_MELDUNG] = ""
-            // Neue Verbindung: Schlüsselhülle (falls vorhanden) erneut übertragen
-            it[Keys.PRIVAT_HUELLE_GESENDET] = false
+            val eigene = it[Keys.PRIVAT_HUELLE].orEmpty()
+            when {
+                // Server kennt noch keinen Schlüssel: eigene Hülle (falls vorhanden) übertragen
+                serverHuelle.isNullOrBlank() -> {
+                    it[Keys.PRIVAT_HUELLE_GESENDET] = false
+                    it.remove(Keys.PRIVAT_OFFENE_HUELLE)
+                }
+                eigene.isNotBlank() && gleicheHuelle(eigene, serverHuelle) -> {
+                    it[Keys.PRIVAT_HUELLE_GESENDET] = true
+                    it.remove(Keys.PRIVAT_OFFENE_HUELLE)
+                }
+                // Hülle eines früheren Geräts: erst per PIN übernehmen, sonst würden die schon
+                // gesicherten Privatfahrten mit einem neuen Schlüssel unlesbar
+                else -> it[Keys.PRIVAT_OFFENE_HUELLE] = serverHuelle
+            }
         }
     }
 

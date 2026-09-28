@@ -125,6 +125,27 @@ class SyncFormatTest {
     }
 
     @Test
+    fun ichMitUndOhneSchluesselhuelle() {
+        assertEquals("Thomas" to null, SyncFormat.ichLesen("""{"fahrer":{"name":"Thomas"},"schluessel":null}"""))
+        assertEquals("Thomas" to null, SyncFormat.ichLesen("""{"fahrer":{"name":"Thomas"}}""")) // Server vor 0.5
+        val (name, huelle) = SyncFormat.ichLesen(
+            """{"fahrer":{"name":"Bernd"},"schluessel":{"v":1,"iv":"ZGVmZ2hpamtsbW5v","ct":"WEM8","salt":"AQIDBAUGBwgJCgsMDQ4PEA==","iter":310000}}"""
+        )
+        assertEquals("Bernd", name)
+        assertEquals("AQIDBAUGBwgJCgsMDQ4PEA==", JSONObject(huelle!!).getString("salt"))
+    }
+
+    @Test
+    fun huelleVomServerIstDieselbeTrotzAndererFeldreihenfolge() {
+        val eigene = at.zweibit.fahrtenbuch.sync.Krypto.Huelle("AQIDBAUGBwgJCgsMDQ4PEA==", 310_000, "ZGVmZ2hpamtsbW5v", "WEM8").json().toString()
+        // So speichert und liefert der Server die Hülle: {v, iv, ct, salt, iter}
+        val vomServer = """{"v":1,"iv":"ZGVmZ2hpamtsbW5v","ct":"WEM8","salt":"AQIDBAUGBwgJCgsMDQ4PEA==","iter":310000}"""
+        assertTrue(at.zweibit.fahrtenbuch.sync.Krypto.huelleGleich(eigene, vomServer))
+        assertTrue(!at.zweibit.fahrtenbuch.sync.Krypto.huelleGleich(eigene, vomServer.replace("WEM8", "WEM9")))
+        assertTrue(!at.zweibit.fahrtenbuch.sync.Krypto.huelleGleich(eigene, "kaputt"))
+    }
+
+    @Test
     fun antwortLesen() {
         val a = SyncFormat.antwort(
             """{"fahrer":{"name":"Thomas"},"angenommen":["e-1","e-2"],"abgelehnt":[{"eintragId":"e-3","grund":"ungültig"}],"serverZeit":1}"""

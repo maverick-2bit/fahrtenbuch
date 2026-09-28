@@ -57,11 +57,11 @@ object Sicherung {
         runCatching { JSONObject(a.text).optString("fehler") }.getOrNull()?.takeIf { it.isNotBlank() }
             ?: "Server meldet Fehler ${a.code}"
 
-    /** Prüft einen Code und liefert den Namen des Fahrers. */
-    suspend fun pruefen(v: Verbindung): Result<String> = runCatching {
+    /** Prüft einen Code und liefert den Namen des Fahrers samt Schlüsselhülle am Server (oder null). */
+    suspend fun pruefen(v: Verbindung): Result<Pair<String, String?>> = runCatching {
         val a = anfrage("${v.server}/api/v1/ich", v.code, null)
         if (a.code != 200) error(fehlertext(a))
-        JSONObject(a.text).getJSONObject("fahrer").getString("name")
+        SyncFormat.ichLesen(a.text)
     }
 
     suspend fun synchronisieren(app: FahrtenbuchApp): SyncErgebnis = mutex.withLock {
@@ -72,7 +72,8 @@ object Sicherung {
         try {
             val kategorien = repo.alleKategorien()
             val privat = app.einstellungen.privatAktuell()
-            val datenSchluessel = if (privat.hatPin) Krypto.ausB64(privat.datenSchluessel) else null
+            // Solange die Hülle eines früheren Geräts auf den PIN wartet, gehen keine Privatfahrten hinaus
+            val datenSchluessel = if (privat.bereit) Krypto.ausB64(privat.datenSchluessel) else null
             val vorbereitet = SyncFormat.vorbereiten(
                 repo.protokollOffeneEintraege(HOECHSTENS),
                 kategorien.filter { it.privat }.map { it.id }.toSet(),
@@ -80,7 +81,7 @@ object Sicherung {
             )
             if (vorbereitet.entfallen.isNotEmpty()) repo.protokollEntfallen(vorbereitet.entfallen)
             // Hülle des Datenschlüssels mitschicken, bis der Server sie bestätigt hat
-            var huelle = if (privat.hatPin && !privat.huelleGesendet) JSONObject(privat.huelle) else null
+            var huelle = if (privat.bereit && !privat.huelleGesendet) JSONObject(privat.huelle) else null
             // Auch ohne Einträge einmal senden: Kategorien, Fahrzeugdaten, Schlüssel, „zuletzt gesichert“
             val stuecke = vorbereitet.senden.chunked(JE_ANFRAGE).ifEmpty { listOf(emptyList()) }
             var gesendet = 0
@@ -134,6 +135,19 @@ object PrivatSchutz {
             dek to Krypto.huelleErstellen(pin, dek)
         }
         app.einstellungen.privatSpeichern(Krypto.b64(dek), huelle.json().toString())
+        SyncPlaner.bald(app)
+    }
+
+    /**
+     * Übernimmt den Datenschlüssel eines früheren Geräts (Hülle vom Server) mit dem bisherigen PIN,
+     * damit die schon gesicherten Privatfahrten lesbar bleiben.
+     * @throws Exception bei falschem PIN
+     */
+    suspend fun uebernehmen(app: FahrtenbuchApp, pin: String) {
+        val huelle = app.einstellungen.privatAktuell().offeneHuelle
+        require(huelle.isNotBlank()) { "Kein früherer PIN vorhanden" }
+        val dek = withContext(Dispatchers.Default) { Krypto.huelleOeffnen(Krypto.Huelle.aus(huelle), pin) }
+        app.einstellungen.privatUebernehmen(Krypto.b64(dek), huelle)
         SyncPlaner.bald(app)
     }
 }

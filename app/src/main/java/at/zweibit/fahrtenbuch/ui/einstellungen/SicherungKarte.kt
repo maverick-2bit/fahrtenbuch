@@ -72,8 +72,11 @@ fun SicherungKarte() {
     val privat by app.einstellungen.privat.collectAsStateWithLifecycle(initialValue = PrivatStand())
     val kategorien by app.repository.kategorienFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     var pinDialog by remember { mutableStateOf(false) }
+    var uebernehmenDialog by remember { mutableStateOf(false) }
+    val pinUebernehmen = privat.offeneHuelle.isNotBlank()
 
     if (pinDialog) PinDialog(neu = !privat.hatPin) { pinDialog = false }
+    if (uebernehmenDialog) PinUebernehmenDialog { uebernehmenDialog = false }
 
     if (eingabe) {
         CodeEingabeDialog(
@@ -145,20 +148,38 @@ fun SicherungKarte() {
                     Text(stand.meldung, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
                 meldung?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                if (kategorien.any { it.privat } || privat.hatPin) {
+                if (kategorien.any { it.privat } || privat.hatPin || pinUebernehmen) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                        Icon(Icons.Filled.Lock, null, tint = if (privat.hatPin) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                        Icon(Icons.Filled.Lock, null, tint = if (privat.bereit) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(if (privat.hatPin) "PIN für Privatfahrten festgelegt" else "Kein PIN für Privatfahrten")
                             Text(
-                                if (privat.hatPin) "Details deiner Privatfahrten sind nur mit deinem PIN lesbar."
-                                else "Privatfahrten werden erst gesichert, wenn du einen PIN festlegst.",
+                                when {
+                                    pinUebernehmen -> "Bisherigen PIN eingeben"
+                                    privat.hatPin -> "PIN für Privatfahrten festgelegt"
+                                    else -> "Kein PIN für Privatfahrten"
+                                }
+                            )
+                            Text(
+                                when {
+                                    pinUebernehmen -> "Für deine Privatfahrten gibt es schon einen PIN von einem früheren Gerät. " +
+                                        "Bis du ihn eingibst, werden Privatfahrten nicht gesichert."
+                                    privat.hatPin -> "Details deiner Privatfahrten sind nur mit deinem PIN lesbar."
+                                    else -> "Privatfahrten werden erst gesichert, wenn du einen PIN festlegst."
+                                },
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (privat.hatPin) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                                color = if (privat.bereit) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                             )
                         }
-                        TextButton(onClick = { pinDialog = true }) { Text(if (privat.hatPin) "Ändern" else "Festlegen") }
+                        TextButton(onClick = { if (pinUebernehmen) uebernehmenDialog = true else pinDialog = true }) {
+                            Text(
+                                when {
+                                    pinUebernehmen -> "Eingeben"
+                                    privat.hatPin -> "Ändern"
+                                    else -> "Festlegen"
+                                }
+                            )
+                        }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -230,9 +251,12 @@ fun VerbindenDialog(v: Verbindung, fertig: () -> Unit) {
     val bisher by app.einstellungen.sync.collectAsStateWithLifecycle(initialValue = SyncStand())
     val privat by app.einstellungen.privat.collectAsStateWithLifecycle(initialValue = PrivatStand())
     val kategorien by app.repository.kategorienFlow.collectAsStateWithLifecycle(initialValue = emptyList())
-    val brauchtPin = kategorien.any { it.privat } && !privat.hatPin
+    val pinUebernehmen = privat.offeneHuelle.isNotBlank()
+    val brauchtPin = kategorien.any { it.privat } && !privat.hatPin && !pinUebernehmen
     var pinDialog by remember(v) { mutableStateOf(false) }
+    var uebernehmenDialog by remember(v) { mutableStateOf(false) }
     if (pinDialog) PinDialog(neu = true) { pinDialog = false }
+    if (uebernehmenDialog) PinUebernehmenDialog { uebernehmenDialog = false }
 
     AlertDialog(
         onDismissRequest = { if (!laeuft) fertig() },
@@ -241,6 +265,13 @@ fun VerbindenDialog(v: Verbindung, fertig: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (verbundenAls != null) {
                     Text("Verbunden als $verbundenAls. Alle Fahrten werden jetzt gesichert, neue ab sofort automatisch.")
+                    if (pinUebernehmen) {
+                        Text(
+                            "Für deine Privatfahrten gibt es schon einen PIN (von einem früheren Gerät). Gib ihn ein, " +
+                                "damit die bereits gesicherten Privatfahrten lesbar bleiben. Bis dahin bleiben Privatfahrten nur auf dem Handy.",
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                     if (brauchtPin) {
                         Text(
                             "Lege jetzt deinen PIN für Privatfahrten fest. Bis dahin bleiben Privatfahrten nur auf dem Handy.",
@@ -267,8 +298,11 @@ fun VerbindenDialog(v: Verbindung, fertig: () -> Unit) {
         },
         confirmButton = {
             if (verbundenAls != null) {
-                if (brauchtPin) TextButton(onClick = { pinDialog = true }) { Text("PIN festlegen") }
-                else TextButton(onClick = fertig) { Text("Fertig") }
+                when {
+                    pinUebernehmen -> TextButton(onClick = { uebernehmenDialog = true }) { Text("PIN eingeben") }
+                    brauchtPin -> TextButton(onClick = { pinDialog = true }) { Text("PIN festlegen") }
+                    else -> TextButton(onClick = fertig) { Text("Fertig") }
+                }
             } else {
                 TextButton(
                     enabled = !laeuft,
@@ -277,8 +311,8 @@ fun VerbindenDialog(v: Verbindung, fertig: () -> Unit) {
                         zustand = null
                         scope.launch {
                             Sicherung.pruefen(v)
-                                .onSuccess { name ->
-                                    app.einstellungen.syncVerbinden(v.server, v.code, name)
+                                .onSuccess { (name, serverHuelle) ->
+                                    app.einstellungen.syncVerbinden(v.server, v.code, name, serverHuelle, Krypto::huelleGleich)
                                     SyncPlaner.regelmaessig(app)
                                     SyncPlaner.bald(app)
                                     verbundenAls = name
@@ -292,7 +326,7 @@ fun VerbindenDialog(v: Verbindung, fertig: () -> Unit) {
         },
         dismissButton = {
             if (verbundenAls == null) TextButton(onClick = fertig, enabled = !laeuft) { Text("Abbrechen") }
-            else if (brauchtPin) TextButton(onClick = fertig) { Text("Später") }
+            else if (brauchtPin || pinUebernehmen) TextButton(onClick = fertig) { Text("Später") }
         },
     )
     LaunchedEffect(verbundenAls) {
@@ -367,5 +401,71 @@ fun PinDialog(neu: Boolean, fertig: () -> Unit) {
             ) { Text("Speichern") }
         },
         dismissButton = { TextButton(onClick = fertig, enabled = !laeuft) { Text("Abbrechen") } },
+    )
+}
+
+/**
+ * Neues Handy oder neu installiert: Der Server hat schon eine Schlüsselhülle. Mit dem bisherigen PIN
+ * übernimmt die App den Datenschlüssel – ein neuer Schlüssel würde die gesicherten Privatfahrten unlesbar machen.
+ */
+@Composable
+fun PinUebernehmenDialog(fertig: () -> Unit) {
+    val context = LocalContext.current
+    val app = context.applicationContext as FahrtenbuchApp
+    val scope = rememberCoroutineScope()
+    var pin by remember { mutableStateOf("") }
+    var laeuft by remember { mutableStateOf(false) }
+    var fehler by remember { mutableStateOf<String?>(null) }
+    var neuFestlegen by remember { mutableStateOf(false) }
+
+    if (neuFestlegen) {
+        PinDialog(neu = true) { fertig() }
+        return
+    }
+    AlertDialog(
+        onDismissRequest = { if (!laeuft) fertig() },
+        title = { Text("Bisherigen PIN eingeben") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Für deine Privatfahrten gibt es schon einen PIN von einem früheren Gerät. " +
+                        "Mit ihm bleiben die bereits gesicherten Privatfahrten lesbar.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    pin, { if (it.all(Char::isDigit)) pin = it },
+                    label = { Text("Bisheriger PIN") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (laeuft) CircularProgressIndicator(Modifier.size(24.dp))
+                fehler?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { neuFestlegen = true }, enabled = !laeuft) { Text("PIN vergessen – neuen festlegen") }
+                Text(
+                    "Mit einem neuen PIN sind die Details der bisher gesicherten Privatfahrten für niemanden mehr lesbar " +
+                        "(Datum, Zeiten und Kilometer bleiben).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = pin.length >= Krypto.MIN_PIN && !laeuft,
+                onClick = {
+                    laeuft = true
+                    fehler = null
+                    scope.launch {
+                        runCatching { PrivatSchutz.uebernehmen(app, pin) }
+                            .onSuccess { fertig() }
+                            .onFailure { fehler = "PIN falsch." }
+                        laeuft = false
+                    }
+                },
+            ) { Text("Übernehmen") }
+        },
+        dismissButton = { TextButton(onClick = fertig, enabled = !laeuft) { Text("Später") } },
     )
 }

@@ -136,6 +136,12 @@ object SyncFormat {
         return Vorbereitet(senden, warten, entfallen)
     }
 
+    /** Antwort von /api/v1/ich: Name des Fahrers und die Schlüsselhülle am Server (JSON) oder null. */
+    fun ichLesen(json: String): Pair<String, String?> {
+        val o = JSONObject(json)
+        return o.getJSONObject("fahrer").getString("name") to o.optJSONObject("schluessel")?.toString()
+    }
+
     fun antwort(json: String): SyncAntwort {
         val o = JSONObject(json)
         val angenommen = o.optJSONArray("angenommen") ?: JSONArray()
