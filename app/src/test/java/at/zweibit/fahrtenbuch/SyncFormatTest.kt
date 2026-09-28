@@ -19,27 +19,27 @@ class SyncFormatTest {
     @Test
     fun linkAusQrCode() {
         assertEquals(
-            Verbindung("https://fahrtenbuch.smarte.events", code),
-            SyncFormat.verbindungLesen("https://fahrtenbuch.smarte.events/verbinden#code=$code"),
+            Verbindung("https://fahrtenbuch.2bit.at", code),
+            SyncFormat.verbindungLesen("https://fahrtenbuch.2bit.at/verbinden#code=$code"),
         )
     }
 
     @Test
     fun rueckfallLinkUndNackterCode() {
         assertEquals(
-            Verbindung("https://fahrtenbuch.smarte.events", code),
-            SyncFormat.verbindungLesen("fahrtenbuch://verbinden?server=https%3A%2F%2Ffahrtenbuch.smarte.events&code=$code"),
+            Verbindung("https://fahrtenbuch.2bit.at", code),
+            SyncFormat.verbindungLesen("fahrtenbuch://verbinden?server=https%3A%2F%2Ffahrtenbuch.2bit.at&code=$code"),
         )
-        assertEquals(Verbindung("https://fahrtenbuch.smarte.events", code), SyncFormat.verbindungLesen("  $code "))
+        assertEquals(Verbindung("https://fahrtenbuch.2bit.at", code), SyncFormat.verbindungLesen("  $code "))
     }
 
     @Test
     fun fremdeOderUnsichereServerWerdenAbgelehnt() {
         assertNull(SyncFormat.verbindungLesen("https://boese.example.com/verbinden#code=$code"))
-        assertNull(SyncFormat.verbindungLesen("http://fahrtenbuch.smarte.events/verbinden#code=$code"))
+        assertNull(SyncFormat.verbindungLesen("http://fahrtenbuch.2bit.at/verbinden#code=$code"))
         assertNull(SyncFormat.verbindungLesen("fahrtenbuch://verbinden?server=https%3A%2F%2Fboese.example.com&code=$code"))
-        assertNull(SyncFormat.verbindungLesen("https://fahrtenbuch.smarte.events/anderes#code=$code"))
-        assertNull(SyncFormat.verbindungLesen("https://fahrtenbuch.smarte.events/verbinden#code=kurz"))
+        assertNull(SyncFormat.verbindungLesen("https://fahrtenbuch.2bit.at/anderes#code=$code"))
+        assertNull(SyncFormat.verbindungLesen("https://fahrtenbuch.2bit.at/verbinden#code=kurz"))
         assertNull(SyncFormat.verbindungLesen("irgendwas"))
     }
 

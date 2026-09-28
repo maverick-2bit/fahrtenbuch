@@ -1,10 +1,16 @@
 {
-  // Produktion: Cloudflare Pages (Projekt „fahrtenbuch“, Adresse fahrtenbuch.2bit.at per CNAME bei domaintechnik).
-  // Tests und lokale Entwicklung nutzen wrangler.test.jsonc (gleicher Code als Worker).
+  // Tests (vitest) und lokale Entwicklung (npm run dev): derselbe Code als Worker mit statischen Dateien.
+  // Online läuft das Fahrtenbuch als Cloudflare Pages – siehe wrangler.jsonc.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "fahrtenbuch",
-  "pages_build_output_dir": "./public",
+  "name": "fahrtenbuch-lokal",
+  "main": "src/index.ts",
   "compatibility_date": "2026-08-22",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/.well-known/*"],
+    "not_found_handling": "404-page"
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -15,7 +21,6 @@
   ],
   "vars": {
     "APP_PAKET": "at.zweibit.fahrtenbuch",
-    // SHA-256-Fingerabdruck des App-Signaturschlüssels (für Android App Links)
     "APP_ZERTIFIKAT_SHA256": "6F:76:48:B0:3E:4D:9C:F7:9A:A0:75:91:D7:B9:BC:F3:1A:07:4A:B6:A0:34:1B:BA:3E:AF:67:DA:89:8D:B1:BB"
   }
 }

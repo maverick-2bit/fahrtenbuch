@@ -45,7 +45,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="fahrtenbuch.smarte.events"
+                    android:host="fahrtenbuch.2bit.at"
                     android:pathPrefix="/verbinden" />
             </intent-filter>
             <!-- Rückfallweg der Verbindungsseite -->

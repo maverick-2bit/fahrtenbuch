@@ -14,7 +14,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
 }
 
 /** Android App Links: Der Verbindungs-Link öffnet direkt die Fahrtenbuch-App. */
-function assetlinks(env: Env): Response {
+export function assetlinks(env: Env): Response {
   return json([
     {
       relation: ["delegate_permission/common.handle_all_urls"],
@@ -23,17 +23,20 @@ function assetlinks(env: Env): Response {
   ]);
 }
 
+/** Gemeinsamer Einstieg für Cloudflare Pages (functions/) und den Worker in Tests und lokaler Entwicklung. */
+export async function verarbeiten(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url);
+  try {
+    if (url.pathname === "/.well-known/assetlinks.json") return assetlinks(env);
+    if (url.pathname.startsWith("/api/")) return await api(req, env, url);
+    return env.ASSETS.fetch(req);
+  } catch (e) {
+    if (e instanceof HttpFehler) return json({ fehler: e.message }, e.status);
+    console.error(e);
+    return json({ fehler: "Interner Fehler" }, 500);
+  }
+}
+
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
-    const url = new URL(req.url);
-    try {
-      if (url.pathname === "/.well-known/assetlinks.json") return assetlinks(env);
-      if (url.pathname.startsWith("/api/")) return await api(req, env, url);
-      return env.ASSETS.fetch(req);
-    } catch (e) {
-      if (e instanceof HttpFehler) return json({ fehler: e.message }, e.status);
-      console.error(e);
-      return json({ fehler: "Interner Fehler" }, 500);
-    }
-  },
+  fetch: (req: Request, env: Env) => verarbeiten(req, env),
 } satisfies ExportedHandler<Env>;

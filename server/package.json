@@ -5,10 +5,10 @@
   "description": "Fahrtenbuch Online: Datensicherung, Admin-Weboberfläche und Berichte (Cloudflare Worker + D1)",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler d1 migrations apply fahrtenbuch --local -c wrangler.test.jsonc && wrangler dev -c wrangler.test.jsonc",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "deploy": "wrangler d1 migrations apply fahrtenbuch --remote && wrangler deploy"
+    "deploy": "wrangler d1 migrations apply fahrtenbuch --remote && wrangler pages deploy --branch master"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
