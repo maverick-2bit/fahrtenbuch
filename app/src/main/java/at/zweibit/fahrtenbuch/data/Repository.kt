@@ -18,8 +18,8 @@ class Repository(private val db: AppDatabase, private val nachAenderung: () -> U
     val kategorienFlow: Flow<List<Kategorie>> = kategorien.alle()
     suspend fun alleKategorien(): List<Kategorie> = kategorien.alleEinmal()
 
-    suspend fun kategorieAnlegen(name: String, farbe: Long): Long =
-        kategorien.einfuegen(Kategorie(name = name.trim(), farbe = farbe, sortierung = kategorien.maxSortierung() + 1))
+    suspend fun kategorieAnlegen(name: String, farbe: Long, privat: Boolean = false): Long =
+        kategorien.einfuegen(Kategorie(name = name.trim(), farbe = farbe, sortierung = kategorien.maxSortierung() + 1, privat = privat))
 
     suspend fun kategorieAendern(kategorie: Kategorie) = kategorien.aktualisieren(kategorie.copy(name = kategorie.name.trim()))
 
@@ -46,29 +46,27 @@ class Repository(private val db: AppDatabase, private val nachAenderung: () -> U
     suspend fun fahrtAnlegen(fahrt: Fahrt): Long {
         val id = db.withTransaction {
             val neu = fahrten.einfuegen(fahrt)
-            protokollieren(fahrt.copy(id = neu))
-            neu
+            neu to protokollieren(fahrt.copy(id = neu))
         }
-        if (fahrt.status != FahrtStatus.LAUFEND) nachAenderung()
-        return id
+        if (id.second) nachAenderung()
+        return id.first
     }
 
     suspend fun fahrtSpeichern(fahrt: Fahrt) {
-        db.withTransaction {
+        val protokolliert = db.withTransaction {
             fahrten.aktualisieren(fahrt)
             protokollieren(fahrt)
         }
-        if (fahrt.status != FahrtStatus.LAUFEND) nachAenderung()
+        if (protokolliert) nachAenderung()
     }
 
     suspend fun fahrtLoeschen(id: Long) {
-        val geloescht = db.withTransaction {
+        val protokolliert = db.withTransaction {
             val f = fahrten.holen(id)
             fahrten.loeschen(id)
-            if (f != null) protokollieren(f, ProtokollAktion.GELOESCHT)
-            f
+            f != null && protokollieren(f, ProtokollAktion.GELOESCHT)
         }
-        if (geloescht != null && geloescht.status != FahrtStatus.LAUFEND) nachAenderung()
+        if (protokolliert) nachAenderung()
     }
 
     // Während der Aufzeichnung (laufende Fahrt) – noch nicht protokolliert
@@ -111,6 +109,7 @@ class Repository(private val db: AppDatabase, private val nachAenderung: () -> U
     suspend fun protokollOffeneEintraege(max: Int): List<ProtokollEintrag> = protokoll.offene(max)
     suspend fun protokollAngenommen(ids: List<String>) = protokoll.angenommen(ids)
     suspend fun protokollAbgelehnt(id: String, meldung: String) = protokoll.abgelehnt(id, meldung)
+    suspend fun protokollEntfallen(ids: List<String>) = protokoll.entfallen(ids)
     suspend fun protokollZuFahrt(uuid: String): List<ProtokollEintrag> = protokoll.zuFahrt(uuid)
 
     /** Fahrten aus der Zeit vor dem Protokoll (vor Version 0.4) einmalig als „neu“ eintragen. */
@@ -120,9 +119,20 @@ class Repository(private val db: AppDatabase, private val nachAenderung: () -> U
         alt.size
     }
 
-    private suspend fun protokollieren(f: Fahrt, aktion: String? = null) {
-        if (f.status == FahrtStatus.LAUFEND) return
-        val a = aktion ?: if (protokoll.anzahl(f.uuid) == 0) ProtokollAktion.NEU else ProtokollAktion.GEAENDERT
+    /**
+     * Protokolliert erst ab dem Zuordnen einer Kategorie (Status „fertig“): Bis dahin ist nicht bekannt,
+     * ob es eine Privatfahrt ist, die nur verschlüsselt den Server erreichen darf.
+     * Löschungen nur, wenn die Fahrt schon im Protokoll steht.
+     * @return true, wenn ein Eintrag geschrieben wurde
+     */
+    private suspend fun protokollieren(f: Fahrt, aktion: String? = null): Boolean {
+        val bekannt = protokoll.anzahl(f.uuid) > 0
+        if (aktion == ProtokollAktion.GELOESCHT) {
+            if (!bekannt) return false
+        } else if (f.status != FahrtStatus.FERTIG) {
+            return false
+        }
+        val a = aktion ?: if (!bekannt) ProtokollAktion.NEU else ProtokollAktion.GEAENDERT
         protokoll.einfuegen(
             ProtokollEintrag(
                 fahrtUuid = f.uuid,
@@ -131,5 +141,6 @@ class Repository(private val db: AppDatabase, private val nachAenderung: () -> U
                 daten = SyncFormat.fahrtDaten(f).toString(),
             )
         )
+        return true
     }
 }

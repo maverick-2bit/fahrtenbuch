@@ -1,5 +1,6 @@
 import { admin } from "./admin";
 import { abmelden, anmelden } from "./anmeldung";
+import { adresse, koordinaten, route } from "./geo";
 import { Env, HttpFehler, json } from "./hilfen";
 import { ich, sync } from "./sync";
 
@@ -7,6 +8,9 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   const p = url.pathname;
   if (p === "/api/v1/sync" && req.method === "POST") return sync(req, env);
   if (p === "/api/v1/ich" && req.method === "GET") return ich(req, env);
+  if (p === "/api/v1/adresse" && req.method === "POST") return adresse(req, env);
+  if (p === "/api/v1/koordinaten" && req.method === "POST") return koordinaten(req, env);
+  if (p === "/api/v1/route" && req.method === "POST") return route(req, env);
   if (p === "/api/admin/anmelden" && req.method === "POST") return anmelden(req, env);
   if (p === "/api/admin/abmelden" && req.method === "POST") return abmelden(req, env);
   if (p.startsWith("/api/admin/")) return admin(req, env, url);
@@ -23,7 +27,7 @@ export function assetlinks(env: Env): Response {
   ]);
 }
 
-/** Gemeinsamer Einstieg für Cloudflare Pages (functions/) und den Worker in Tests und lokaler Entwicklung. */
+/** Einstieg des Workers: Schnittstelle und App-Links, alles andere liefern die statischen Dateien (public/). */
 export async function verarbeiten(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   try {

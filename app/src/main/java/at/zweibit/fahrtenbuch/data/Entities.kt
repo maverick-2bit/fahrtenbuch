@@ -63,6 +63,9 @@ data class Kategorie(
     val farbe: Long,
     val sortierung: Int = 0,
     val aktiv: Boolean = true,
+    /** Privatfahrten: Details werden nur verschlüsselt gesichert (persönlicher PIN). Seit DB-Version 4. */
+    @ColumnInfo(defaultValue = "0")
+    val privat: Boolean = false,
 )
 
 @Entity(

@@ -98,8 +98,9 @@ class EinstellungenViewModel(application: Application) : AndroidViewModel(applic
     val werte: StateFlow<EinstellungenWerte?> =
         app.einstellungen.werte.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    fun kategorieSpeichern(k: Kategorie?, name: String, farbe: Long) = viewModelScope.launch {
-        if (k == null) repo.kategorieAnlegen(name, farbe) else repo.kategorieAendern(k.copy(name = name, farbe = farbe))
+    fun kategorieSpeichern(k: Kategorie?, name: String, farbe: Long, privat: Boolean) = viewModelScope.launch {
+        if (k == null) repo.kategorieAnlegen(name, farbe, privat)
+        else repo.kategorieAendern(k.copy(name = name, farbe = farbe, privat = privat))
     }
 
     fun kategorieEntfernen(k: Kategorie) = viewModelScope.launch { repo.kategorieEntfernen(k) }
@@ -129,8 +130,8 @@ fun EinstellungenScreen(vm: EinstellungenViewModel = viewModel()) {
         KategorieBearbeitenDialog(
             kategorie = bearbeiten,
             vorschlagFarbe = KategorieFarben.PALETTE[kategorien.size % KategorieFarben.PALETTE.size],
-            fertig = { name, farbe ->
-                vm.kategorieSpeichern(bearbeiten, name, farbe)
+            fertig = { name, farbe, privat ->
+                vm.kategorieSpeichern(bearbeiten, name, farbe, privat)
                 bearbeiten = null
                 neuAnlegen = false
             },
@@ -181,7 +182,12 @@ fun EinstellungenScreen(vm: EinstellungenViewModel = viewModel()) {
                     ) {
                         Farbpunkt(Color(k.farbe), 16.dp)
                         Spacer(Modifier.width(12.dp))
-                        Text(k.name, Modifier.weight(1f))
+                        Column(Modifier.weight(1f)) {
+                            Text(k.name)
+                            if (k.privat) {
+                                Text("privat · mit PIN geschützt", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                         IconButton(onClick = { vm.verschieben(k, -1) }, enabled = i > 0) {
                             Icon(Icons.Filled.KeyboardArrowUp, "Nach oben")
                         }
@@ -227,6 +233,9 @@ fun EinstellungenScreen(vm: EinstellungenViewModel = viewModel()) {
                 }
             }
         }
+
+        // ------------------------------------------------ Automatisch starten (Bluetooth)
+        AutoStartKarte()
 
         // ------------------------------------------------ Blitzer
         BlitzerKarte(w, vm::speichern)
@@ -415,7 +424,16 @@ private fun UpdateKarte() {
                     Text("Suche nach Updates …")
                 }
                 UpdateStatus.Aktuell -> Text("Die App ist auf dem neuesten Stand.", style = MaterialTheme.typography.bodySmall)
-                is UpdateStatus.Fehler -> Text(s.text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                is UpdateStatus.Fehler -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(s.text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    // Zweiter Weg: die schon geladene Datei dem normalen Android-Installer geben
+                    s.datei?.takeIf { it.exists() }?.let { datei ->
+                        OutlinedButton(
+                            onClick = { runCatching { Updater.mitAndroidInstallerOeffnen(context, datei) } },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Mit dem Android-Installer versuchen") }
+                    }
+                }
                 is UpdateStatus.Laedt -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Lade Version ${s.info.version} … ${s.prozent} %")
                     LinearProgressIndicator(progress = { s.prozent / 100f }, modifier = Modifier.fillMaxWidth())
@@ -489,11 +507,12 @@ private fun AkkuKarte() {
 private fun KategorieBearbeitenDialog(
     kategorie: Kategorie?,
     vorschlagFarbe: Long,
-    fertig: (String, Long) -> Unit,
+    fertig: (String, Long, Boolean) -> Unit,
     abbrechen: () -> Unit,
 ) {
     var name by remember { mutableStateOf(kategorie?.name ?: "") }
     var farbe by remember { mutableStateOf(kategorie?.farbe ?: vorschlagFarbe) }
+    var privat by remember { mutableStateOf(kategorie?.privat ?: false) }
     AlertDialog(
         onDismissRequest = abbrechen,
         title = { Text(if (kategorie == null) "Neue Kategorie" else "Kategorie bearbeiten") },
@@ -519,10 +538,21 @@ private fun KategorieBearbeitenDialog(
                         }
                     }
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Privatfahrten")
+                        Text(
+                            "Adressen und Notizen werden nur mit deinem PIN lesbar gesichert. Datum und Kilometer bleiben sichtbar.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = privat, onCheckedChange = { privat = it })
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { fertig(name.trim(), farbe) }, enabled = name.isNotBlank()) { Text("Speichern") }
+            TextButton(onClick = { fertig(name.trim(), farbe, privat) }, enabled = name.isNotBlank()) { Text("Speichern") }
         },
         dismissButton = { TextButton(onClick = abbrechen) { Text("Abbrechen") } },
     )

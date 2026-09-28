@@ -16,6 +16,21 @@ export interface FahrtDaten {
   kategorieId: number | null;
   notiz: string;
   status: string;
+  /** Verschlüsselte Details einer Privatfahrt; dann sind Adressen, Zwischenziele, Notiz und Koordinaten leer. */
+  geheim: Geheim | null;
+}
+
+/** AES-GCM-verschlüsselter Inhalt (base64), Schlüssel kennt nur der Fahrer. */
+export interface Geheim {
+  v: number;
+  iv: string;
+  ct: string;
+}
+
+/** Datenschlüssel des Fahrers, verschlüsselt mit einem Schlüssel aus seinem PIN (PBKDF2-SHA-256 + AES-GCM). */
+export interface SchluesselHuelle extends Geheim {
+  salt: string;
+  iter: number;
 }
 
 export interface SyncEintrag {
@@ -31,10 +46,38 @@ interface SyncAnfrage {
   einstellungen?: { fahrer?: string; fahrzeug?: string; kennzeichen?: string; kmStandStart?: number; kmStandAb?: number };
   kategorien?: { id: number; name: string; farbe: number; sortierung?: number; aktiv?: boolean }[];
   eintraege?: SyncEintrag[];
+  schluessel?: SchluesselHuelle;
 }
 
 export const MAX_EINTRAEGE = 200;
 const ID = /^[A-Za-z0-9-]{8,64}$/;
+const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
+function base64(wert: unknown, min: number, max: number): string {
+  const s = text(wert, max);
+  if (s.length < min || !B64.test(s)) throw new HttpFehler(400, "Verschlüsselte Daten ungültig");
+  return s;
+}
+
+export function geheimPruefen(g: unknown): Geheim | null {
+  if (g === null || g === undefined) return null;
+  if (typeof g !== "object") throw new HttpFehler(400, "Verschlüsselte Daten ungültig");
+  const o = g as Record<string, unknown>;
+  if (o.v !== 1) throw new HttpFehler(400, "Unbekannte Verschlüsselung");
+  // 12 Byte IV = 16 Zeichen base64; Inhalt höchstens ~60 kB
+  return { v: 1, iv: base64(o.iv, 16, 16), ct: base64(o.ct, 24, 80_000) };
+}
+
+export function huellePruefen(h: unknown): SchluesselHuelle {
+  const g = geheimPruefen(h);
+  if (!g) throw new HttpFehler(400, "Schlüssel fehlt");
+  const o = h as Record<string, unknown>;
+  const iter = zahl(o.iter);
+  if (!Number.isInteger(iter) || iter < 100_000 || iter > 5_000_000) throw new HttpFehler(400, "Schlüssel ungültig");
+  // 32-Byte-Schlüssel + 16 Byte Prüfsumme = 64 Zeichen base64
+  if (g.ct.length !== 64) throw new HttpFehler(400, "Schlüssel ungültig");
+  return { ...g, salt: base64(o.salt, 24, 24), iter };
+}
 
 function daten(d: unknown): FahrtDaten {
   if (!d || typeof d !== "object") throw new HttpFehler(400, "Fahrtdaten fehlen");
@@ -49,7 +92,8 @@ function daten(d: unknown): FahrtDaten {
       throw new HttpFehler(400, "Zwischenziele ungültig");
     }
   }
-  return {
+  const geheim = geheimPruefen(o.geheim);
+  const ergebnis: FahrtDaten = {
     startZeit: zahl(o.startZeit),
     endeZeit: zahl(o.endeZeit, true),
     startAdresse: text(o.startAdresse, 500),
@@ -63,7 +107,13 @@ function daten(d: unknown): FahrtDaten {
     kategorieId: zahl(o.kategorieId, true),
     notiz: text(o.notiz, 2_000),
     status,
+    geheim,
   };
+  // Privatfahrt: kein Klartext neben den verschlüsselten Details speichern, selbst wenn einer mitkäme
+  if (geheim) {
+    Object.assign(ergebnis, { startAdresse: "", endeAdresse: "", zwischenziele: "", notiz: "", startLat: null, startLon: null, endeLat: null, endeLon: null });
+  }
+  return ergebnis;
 }
 
 /** Prüft und vereinheitlicht einen Eintrag; wirft bei ungültigen Daten. */
@@ -141,6 +191,12 @@ export async function sync(req: Request, env: Env): Promise<Response> {
       ).bind(fahrer.id, JSON.stringify(kategorien)),
     );
   }
+  if (a.schluessel !== undefined) {
+    // Neuer oder geänderter PIN: nur die verschlüsselte Hülle des Datenschlüssels wird gespeichert
+    anweisungen.push(
+      db.prepare("UPDATE fahrer SET schluessel = ? WHERE id = ?").bind(JSON.stringify(huellePruefen(a.schluessel)), fahrer.id),
+    );
+  }
   if (gueltig.length > 0) {
     anweisungen.push(
       // 1. Protokoll: neue Fassungen anfügen (Versionen je Fahrt fortlaufend)
@@ -165,7 +221,7 @@ export async function sync(req: Request, env: Env): Promise<Response> {
       db.prepare(
         `INSERT INTO fahrten (uuid, fahrer_id, version, start_zeit, ende_zeit, start_adresse, ende_adresse, zwischenziele,
                               start_lat, start_lon, ende_lat, ende_lon, distanz_meter, kategorie_id, kategorie_name,
-                              notiz, status, geloescht, geaendert)
+                              notiz, status, geloescht, geaendert, geheim)
          SELECT p.uuid, p.fahrer_id, p.version,
                 json_extract(p.daten, '$.startZeit'), json_extract(p.daten, '$.endeZeit'),
                 json_extract(p.daten, '$.startAdresse'), json_extract(p.daten, '$.endeAdresse'),
@@ -174,7 +230,7 @@ export async function sync(req: Request, env: Env): Promise<Response> {
                 json_extract(p.daten, '$.endeLat'), json_extract(p.daten, '$.endeLon'),
                 json_extract(p.daten, '$.distanzMeter'), json_extract(p.daten, '$.kategorieId'),
                 COALESCE(k.name, ''), json_extract(p.daten, '$.notiz'), json_extract(p.daten, '$.status'),
-                p.aktion = 'geloescht', p.zeit_geraet
+                p.aktion = 'geloescht', p.zeit_geraet, json_extract(p.daten, '$.geheim')
          FROM fahrten_protokoll p
          LEFT JOIN kategorien k ON k.fahrer_id = p.fahrer_id AND k.id = json_extract(p.daten, '$.kategorieId')
          WHERE p.fahrer_id = ?1
@@ -186,7 +242,8 @@ export async function sync(req: Request, env: Env): Promise<Response> {
            zwischenziele = excluded.zwischenziele, start_lat = excluded.start_lat, start_lon = excluded.start_lon,
            ende_lat = excluded.ende_lat, ende_lon = excluded.ende_lon, distanz_meter = excluded.distanz_meter,
            kategorie_id = excluded.kategorie_id, kategorie_name = excluded.kategorie_name, notiz = excluded.notiz,
-           status = excluded.status, geloescht = excluded.geloescht, geaendert = excluded.geaendert
+           status = excluded.status, geloescht = excluded.geloescht, geaendert = excluded.geaendert,
+           geheim = excluded.geheim
          WHERE fahrten.fahrer_id = excluded.fahrer_id`,
       ).bind(fahrer.id, eintraegeJson),
     );
@@ -209,8 +266,13 @@ export async function sync(req: Request, env: Env): Promise<Response> {
   return json({ fahrer: { name: fahrer.name }, angenommen, abgelehnt, serverZeit: jetzt });
 }
 
-/** Kurze Prüfung, ob der Geräte-Code gilt – für die Verbindung in der App. */
+/**
+ * Kurze Prüfung, ob der Geräte-Code gilt – für die Verbindung in der App. Liefert auch die
+ * Schlüsselhülle (nur mit dem PIN zu öffnen): Ein neues Gerät übernimmt damit den bisherigen
+ * Datenschlüssel, statt einen neuen anzulegen, mit dem die alten Privatfahrten unlesbar würden.
+ */
 export async function ich(req: Request, env: Env): Promise<Response> {
   const f = await fahrerPruefen(req, env);
-  return json({ fahrer: { name: f.name } });
+  const s = await env.DB.prepare("SELECT schluessel FROM fahrer WHERE id = ?").bind(f.id).first<{ schluessel: string | null }>();
+  return json({ fahrer: { name: f.name }, schluessel: s?.schluessel ? JSON.parse(s.schluessel) : null });
 }

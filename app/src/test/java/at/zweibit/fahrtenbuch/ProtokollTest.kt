@@ -49,17 +49,20 @@ class ProtokollTest {
         assertEquals(0, repo.protokollZuFahrt(uuid).size)
         assertEquals(0, angestossen)
 
-        // Ende der Fahrt (Status offen) → „neu“
+        // Ende der Fahrt (Status offen): noch kein Eintrag – es könnte eine Privatfahrt sein
         repo.fahrtSpeichern(repo.fahrt(id)!!.copy(endeZeit = 2_000, endeAdresse = "Kunde A", status = FahrtStatus.OFFEN))
-        // Kategorie gewählt → „geändert“
+        assertEquals(0, repo.protokollZuFahrt(uuid).size)
+        // Kategorie gewählt → „neu“
         repo.kategorisieren(id, katId, "Termin", "Zuhause", "Kunde A")
+        // Später geändert → „geändert“
+        repo.fahrtSpeichern(repo.fahrt(id)!!.copy(notiz = "Termin verschoben"))
         // Gelöscht → „gelöscht“
         repo.fahrtLoeschen(id)
 
         val eintraege = repo.protokollZuFahrt(uuid)
         assertEquals(listOf(ProtokollAktion.NEU, ProtokollAktion.GEAENDERT, ProtokollAktion.GELOESCHT), eintraege.map { it.aktion })
         assertEquals(3, eintraege.map { it.eintragId }.toSet().size)
-        val daten = JSONObject(eintraege[1].daten)
+        val daten = JSONObject(eintraege[0].daten)
         assertEquals("Termin", daten.getString("notiz"))
         assertEquals(5_000.0, daten.getDouble("distanzMeter"), 0.0)
         assertEquals(katId, daten.getLong("kategorieId"))
@@ -82,9 +85,19 @@ class ProtokollTest {
         db.fahrtDao().einfuegen(Fahrt(startZeit = 1_000, status = FahrtStatus.FERTIG))
         db.fahrtDao().einfuegen(Fahrt(startZeit = 2_000, status = FahrtStatus.OFFEN))
         db.fahrtDao().einfuegen(Fahrt(startZeit = 3_000, status = FahrtStatus.LAUFEND))
-        assertEquals(2, repo.altbestandProtokollieren())
+        // Nur zugeordnete Fahrten; die offene wird erst beim Zuordnen protokolliert
+        assertEquals(1, repo.altbestandProtokollieren())
         assertEquals(0, repo.altbestandProtokollieren())
-        assertEquals(2, repo.protokollOffeneEintraege(100).size)
+        assertEquals(1, repo.protokollOffeneEintraege(100).size)
+    }
+
+    @Test
+    fun verworfeneOffeneFahrtHinterlaesstKeinenEintrag() = runBlocking {
+        val id = repo.fahrtAnlegen(Fahrt(startZeit = 1_000, status = FahrtStatus.OFFEN))
+        val uuid = repo.fahrt(id)!!.uuid
+        repo.fahrtLoeschen(id)
+        assertEquals(0, repo.protokollZuFahrt(uuid).size)
+        assertEquals(0, angestossen)
     }
 
     @Test

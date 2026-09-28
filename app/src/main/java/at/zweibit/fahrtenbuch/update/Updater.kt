@@ -8,6 +8,8 @@ import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
+import androidx.core.content.FileProvider
 import at.zweibit.fahrtenbuch.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,7 +34,8 @@ sealed interface UpdateStatus {
     data object Aktuell : UpdateStatus
     data class Verfuegbar(val info: UpdateInfo) : UpdateStatus
     data class Laedt(val info: UpdateInfo, val prozent: Int) : UpdateStatus
-    data class Fehler(val text: String) : UpdateStatus
+    /** @param datei heruntergeladene APK – für den zweiten Weg über den normalen Android-Installer */
+    data class Fehler(val text: String, val datei: File? = null) : UpdateStatus
 }
 
 /**
@@ -41,13 +44,17 @@ sealed interface UpdateStatus {
  * Schlüssel signiert ist, bleiben alle Fahrten erhalten.
  */
 object Updater {
-    const val REPO = "maverick-2bit/fahrtenbuch"
+    const val REPO = "smarte-events/fahrtenbuch"
     private const val API = "https://api.github.com/repos/$REPO/releases/latest"
     private const val PREFS = "update"
     private const val LETZTE_PRUEFUNG = "letzte_pruefung"
     private const val AUTO_ABSTAND_MS = 6L * 3600 * 1000
 
     private val _status = MutableStateFlow<UpdateStatus>(UpdateStatus.Unbekannt)
+
+    /** Zuletzt heruntergeladene APK (für den Rückfallweg, falls die Installation scheitert). */
+    @Volatile
+    internal var letzteDatei: File? = null
     val status: StateFlow<UpdateStatus> = _status.asStateFlow()
 
     /** Vergleicht Versionen wie „0.10.1“ > „0.9.3“; ein führendes „v“ wird ignoriert. */
@@ -135,6 +142,8 @@ object Updater {
             return
         }
         _status.value = UpdateStatus.Laedt(info, 0)
+        // Sonst würde nach einem abgebrochenen Download eine halbe Datei zum Installieren angeboten
+        letzteDatei = null
         val ergebnis = runCatching {
             withContext(Dispatchers.IO) {
                 val ordner = File(ctx.cacheDir, "update").apply { mkdirs() }
@@ -161,10 +170,24 @@ object Updater {
                     }
                 }
                 pruefeApk(ctx, datei)
+                letzteDatei = datei
                 sitzungStarten(ctx, datei)
             }
         }
-        ergebnis.onFailure { _status.value = UpdateStatus.Fehler(it.message ?: "Installation fehlgeschlagen") }
+        ergebnis.onFailure { _status.value = UpdateStatus.Fehler(it.message ?: "Installation fehlgeschlagen", letzteDatei) }
+    }
+
+    /**
+     * Rückfallweg: übergibt die heruntergeladene APK dem normalen Android-Installer
+     * (wie beim Antippen der Datei im Dateimanager).
+     */
+    fun mitAndroidInstallerOeffnen(context: Context, datei: File) {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", datei)
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
     }
 
     private fun pruefeApk(ctx: Context, datei: File) {
@@ -183,9 +206,6 @@ object Updater {
         val installer = ctx.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
             setAppPackageName(ctx.packageName)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
-            }
         }
         val id = installer.createSession(params)
         installer.openSession(id).use { sitzung ->
@@ -218,13 +238,19 @@ class InstallReceiver : BroadcastReceiver() {
             }
             PackageInstaller.STATUS_SUCCESS -> Unit // Die App wird dabei neu gestartet
             else -> {
-                val text = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
-                Updater.ergebnis(
-                    UpdateStatus.Fehler(
-                        if (s == PackageInstaller.STATUS_FAILURE_ABORTED) "Installation abgebrochen."
-                        else "Installation fehlgeschlagen" + (text?.let { ": $it" } ?: "")
-                    )
-                )
+                // Begründung von Android immer mit anzeigen – sonst lässt sich ein Fehler nicht eingrenzen
+                val grund = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)?.takeIf { it.isNotBlank() }
+                val art = when (s) {
+                    PackageInstaller.STATUS_FAILURE_ABORTED -> "Installation abgebrochen"
+                    PackageInstaller.STATUS_FAILURE_BLOCKED -> "Installation vom System blockiert"
+                    PackageInstaller.STATUS_FAILURE_CONFLICT -> "Installation fehlgeschlagen (Konflikt mit der installierten App)"
+                    PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> "App passt nicht zu diesem Gerät"
+                    PackageInstaller.STATUS_FAILURE_INVALID -> "Ungültige Installationsdatei"
+                    PackageInstaller.STATUS_FAILURE_STORAGE -> "Zu wenig Speicherplatz"
+                    else -> "Installation fehlgeschlagen"
+                }
+                Log.w("Fahrtenbuch-Update", "Status $s: $grund")
+                Updater.ergebnis(UpdateStatus.Fehler(art + (grund?.let { " ($it)" } ?: "") + ".", Updater.letzteDatei))
             }
         }
     }

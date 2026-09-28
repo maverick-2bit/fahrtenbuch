@@ -1,0 +1,450 @@
+/* Fahrtenbuch Web-App – fürs iPhone gebaut: große Knöpfe, untere Leiste, helles und dunkles Design.
+   Raster-Spalten immer minmax(0, 1fr): sonst wächst die Spalte mit breitem Inhalt (Tabellen, lange
+   Adressen) über den Bildschirmrand hinaus. */
+:root {
+  --blau: #1e5aa8;
+  --blau-hell: #d6e3ff;
+  --grund: #f2f4f8;
+  --flaeche: #ffffff;
+  --text: #1b1f27;
+  --text-2: #5a6272;
+  --linie: #dde2ea;
+  --rot: #c62828;
+  --gruen: #2e7d32;
+  --gelb: #f6b100;
+  --start: #2e7d32;
+  --stopp: #c62828;
+  --pause: #ffb300;
+  --radius: 14px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --blau: #a9c7ff;
+    --blau-hell: #22324d;
+    --grund: #0f1115;
+    --flaeche: #1b1e25;
+    --text: #e3e6ee;
+    --text-2: #9aa3b5;
+    --linie: #2e333d;
+    --rot: #ff8a80;
+    --gruen: #81c784;
+  }
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--grund);
+  color: var(--text);
+  font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
+}
+
+a { color: var(--blau); }
+
+.kopf {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(8px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--flaeche) 92%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--linie);
+}
+
+.marke { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 18px; }
+
+.syncstatus {
+  appearance: none;
+  border: 1px solid var(--linie);
+  background: var(--flaeche);
+  color: var(--text-2);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.lampe { width: 9px; height: 9px; border-radius: 50%; background: #9e9e9e; }
+.lampe.gruen { background: var(--gruen); }
+.lampe.gelb { background: var(--gelb); }
+.lampe.rot { background: var(--rot); }
+
+.inhalt {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 14px max(14px, env(safe-area-inset-right)) 24px max(14px, env(safe-area-inset-left));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+h1 { font-size: 22px; margin: 0; }
+h2 { font-size: 17px; margin: 0 0 8px; }
+
+.karte {
+  background: var(--flaeche);
+  border: 1px solid var(--linie);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.klein { font-size: 13px; color: var(--text-2); margin: 0; }
+.fett { font-weight: 650; margin: 0; }
+.fehler { color: var(--rot); margin: 0; font-size: 14px; }
+.fehler:empty { display: none; }
+.leer { color: var(--text-2); text-align: center; padding: 32px 0; margin: 0; }
+p { margin: 0; }
+
+/* ---------------------------------------------------------------- Knöpfe */
+
+button { font: inherit; color: inherit; }
+
+.knopf, .haupt {
+  appearance: none;
+  border: 1px solid var(--linie);
+  background: var(--flaeche);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.haupt, .knopf.haupt { background: var(--blau); border-color: var(--blau); color: #fff; }
+@media (prefers-color-scheme: dark) { .haupt, .knopf.haupt { color: #0b1a33; } }
+.knopf:disabled, .haupt:disabled, .gross:disabled { opacity: .5; }
+.breit { width: 100%; }
+
+.text {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--blau);
+  font-weight: 600;
+  padding: 8px 6px;
+  min-height: 44px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.warnung { color: var(--rot); }
+
+.gross {
+  appearance: none;
+  border: 0;
+  border-radius: 18px;
+  min-height: 72px;
+  padding: 12px 16px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  width: 100%;
+}
+.gross.start { background: var(--start); min-height: 96px; font-size: 24px; }
+.gross.stopp { background: var(--stopp); }
+.gross.weiter { background: var(--start); }
+.gross.pause { background: var(--pause); color: #000; }
+.gross.haupt { background: var(--blau); border-radius: 14px; min-height: 52px; font-size: 17px; }
+
+.knopfreihe { display: flex; gap: 10px; flex-wrap: wrap; }
+.knopfreihe > * { flex: 1 1 0; }
+
+/* ---------------------------------------------------------------- Hinweise */
+
+.hinweis {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  background: color-mix(in srgb, var(--gelb) 14%, var(--flaeche));
+  border: 1px solid color-mix(in srgb, var(--gelb) 45%, var(--linie));
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 14px;
+}
+.hinweis.rot { background: color-mix(in srgb, var(--rot) 12%, var(--flaeche)); border-color: color-mix(in srgb, var(--rot) 40%, var(--linie)); }
+.hinweis.link strong { color: var(--blau); }
+
+.meldung {
+  position: fixed;
+  left: 50%;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  transform: translate(-50%, 20px);
+  background: #222a36;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  max-width: calc(100vw - 32px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s, transform .2s;
+  z-index: 20;
+}
+.meldung.sichtbar { opacity: 1; transform: translate(-50%, 0); }
+.meldung.fehler { background: var(--stopp); color: #fff; }
+
+/* ---------------------------------------------------------------- Laufende Fahrt */
+
+.laufend { background: color-mix(in srgb, var(--blau) 12%, var(--flaeche)); border-color: color-mix(in srgb, var(--blau) 30%, var(--linie)); }
+.laufend.pause { background: color-mix(in srgb, var(--pause) 16%, var(--flaeche)); }
+.laufend .titel { font-weight: 650; }
+.laufend .km { font-size: 46px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tempo { font-weight: 600; }
+
+.adresszeile { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--linie); padding-top: 6px; }
+.adresszeile > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.adresszeile small { color: var(--text-2); display: block; font-size: 12px; }
+
+select {
+  font: inherit;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--linie);
+  border-radius: 12px;
+  background: var(--flaeche);
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------------- Listen */
+
+.zeile {
+  appearance: none;
+  border: 0;
+  border-top: 1px solid var(--linie);
+  background: none;
+  text-align: left;
+  padding: 10px 0;
+  display: grid;
+  gap: 2px;
+  cursor: pointer;
+  width: 100%;
+  min-width: 0;
+}
+.zeile small { color: var(--text-2); font-size: 13px; overflow-wrap: anywhere; }
+.zeile.mit-punkt { display: flex; align-items: center; gap: 10px; }
+.zeile.mit-punkt span { display: grid; }
+
+.summenzeile { display: flex; align-items: center; gap: 10px; }
+.summenzeile > span:nth-child(2) { flex: 1; }
+.summenzeile.gesamt { border-top: 1px solid var(--linie); padding-top: 6px; font-weight: 650; }
+.summenzeile.gesamt > span:first-child { flex: 1; }
+
+.punkt { width: 11px; height: 11px; border-radius: 50%; display: inline-block; flex: none; }
+
+.monat { display: grid; grid-template-columns: minmax(0, 1fr); background: var(--flaeche); border: 1px solid var(--linie); border-radius: var(--radius); overflow: hidden; }
+.monatskopf {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--blau-hell);
+  font-size: 16px;
+  position: sticky;
+  top: calc(52px + env(safe-area-inset-top));
+}
+
+.fahrt {
+  appearance: none;
+  border: 0;
+  border-top: 1px solid var(--linie);
+  background: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.fahrt .balken { width: 5px; align-self: stretch; min-height: 44px; border-radius: 3px; flex: none; }
+.fahrt .mitte { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.fahrt .mitte small { font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.fahrt .mitte small.fehler { color: var(--rot); }
+.fahrt .rechts { white-space: nowrap; }
+
+/* ---------------------------------------------------------------- Formulare */
+
+.formular { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.feld { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
+.feld > span { font-size: 13px; color: var(--text-2); font-weight: 600; }
+.feld small { font-size: 12px; color: var(--text-2); }
+
+input[type="text"], input[type="password"], input[type="date"], input[type="time"], input:not([type]) {
+  font: inherit;
+  font-size: 16px; /* kleiner zoomt Safari beim Tippen hinein */
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--linie);
+  border-radius: 12px;
+  background: var(--flaeche);
+  color: var(--text);
+  -webkit-appearance: none;
+  appearance: none;
+}
+input:focus, select:focus { outline: 2px solid var(--blau); outline-offset: 1px; }
+
+.zweispaltig { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+
+.zwischen { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.reihe { display: flex; gap: 6px; align-items: center; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--linie);
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: var(--flaeche);
+  color: var(--text);
+  cursor: pointer;
+  min-height: 40px;
+}
+.chip[aria-pressed="true"] { background: var(--blau-hell); border-color: var(--blau); color: var(--blau); font-weight: 650; }
+.leiste .chip[aria-pressed="false"] { opacity: .45; }
+.leiste .chip[aria-pressed="true"] { background: var(--flaeche); border-color: var(--linie); color: var(--text); font-weight: 400; }
+
+.farben { display: flex; flex-wrap: wrap; gap: 10px; }
+.farbe { appearance: none; width: 38px; height: 38px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; }
+.farbe[aria-pressed="true"] { border-color: var(--text); }
+
+.schalter { display: flex; align-items: center; gap: 12px; }
+.schalter input { width: 24px; height: 24px; accent-color: var(--blau); }
+.schalter span { display: grid; }
+.schalter small { color: var(--text-2); font-size: 13px; }
+
+.seitenkopf { display: flex; align-items: center; gap: 8px; }
+
+/* ---------------------------------------------------------------- Dialog */
+
+.dialog {
+  border: 0;
+  border-radius: 20px;
+  padding: 20px;
+  width: min(560px, calc(100vw - 20px));
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  background: var(--flaeche);
+  color: var(--text);
+  box-shadow: 0 20px 50px rgb(0 0 0 / 30%);
+}
+.dialog[open] { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.dialog::backdrop { background: rgb(15 20 30 / 50%); }
+.dialog h2 { margin: 0; font-size: 19px; }
+.dialog h2:focus { outline: none; }
+.aktionen { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; }
+.aktionen .warnung { margin-right: auto; }
+
+.kategorien { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.kategorie { appearance: none; border: 0; border-radius: 14px; min-height: 56px; font-size: 18px; font-weight: 650; cursor: pointer; }
+
+/* ---------------------------------------------------------------- Berichte */
+
+.leiste { gap: 12px; }
+.segment { display: flex; border: 1px solid var(--linie); border-radius: 999px; overflow: hidden; }
+.segment button { appearance: none; flex: 1; border: 0; background: transparent; color: var(--text); padding: 9px 10px; cursor: pointer; min-height: 40px; }
+.segment button + button { border-left: 1px solid var(--linie); }
+.segment button[aria-pressed="true"] { background: var(--blau-hell); color: var(--blau); font-weight: 650; }
+.blaettern { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.blaettern strong { text-align: center; flex: 1; }
+.blaettern .knopf { min-width: 48px; padding: 6px 12px; font-size: 20px; }
+.blaettern input { flex: 1; min-width: 0; }
+
+.tabelle { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tabelle th, .tabelle td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--linie); vertical-align: top; }
+.tabelle th { font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-2); font-weight: 650; }
+.tabelle .zahl { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tabelle tr.summe td { font-weight: 700; border-bottom: 0; }
+.block-kopf { display: flex; align-items: center; gap: 8px; }
+.block-kopf h2 { margin: 0; flex: 1; }
+
+/* Fahrtenliste im Bericht: am Handy als Karten statt breiter Tabelle */
+@media (max-width: 640px) {
+  .tabelle.liste thead { display: none; }
+  .tabelle.liste, .tabelle.liste tbody, .tabelle.liste tr, .tabelle.liste td { display: block; width: 100%; }
+  .tabelle.liste tr { border-top: 1px solid var(--linie); padding: 6px 0; }
+  .tabelle.liste td { border: 0; padding: 1px 0; display: flex; gap: 8px; text-align: left; white-space: normal; }
+  .tabelle.liste td::before { content: attr(data-titel); color: var(--text-2); font-size: 12px; min-width: 96px; flex: none; }
+  .tabelle.liste td:empty { display: none; }
+}
+
+.druckkopf { display: none; }
+
+/* ---------------------------------------------------------------- Untere Leiste */
+
+.tabs {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 4px max(4px, env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--flaeche) 94%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--linie);
+}
+.tabs a {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px 0;
+  color: var(--text-2);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 600;
+  min-height: 50px;
+}
+.tabs svg { width: 24px; height: 24px; fill: currentColor; }
+.tabs a[aria-current="page"] { color: var(--blau); }
+
+/* ---------------------------------------------------------------- Drucken */
+
+@media print {
+  @page { size: A4 landscape; margin: 12mm; }
+  :root { --flaeche: #fff; --grund: #fff; --text: #000; --text-2: #444; --linie: #ccc; }
+  body { padding: 0; background: #fff; font-size: 10pt; }
+  .kopf, .tabs, .meldung, .nicht-drucken, .knopf, .knopfreihe { display: none !important; }
+  .inhalt { max-width: none; padding: 0; gap: 8px; }
+  .karte { border: 0; padding: 0; }
+  .druckkopf { display: block; }
+  .tabelle.liste thead { display: table-header-group; }
+  .tabelle.liste { display: table; }
+  .tabelle.liste tbody { display: table-row-group; }
+  .tabelle.liste tr { display: table-row; }
+  .tabelle.liste td { display: table-cell; }
+  .tabelle.liste td::before { content: none; }
+  tr { break-inside: avoid; }
+}

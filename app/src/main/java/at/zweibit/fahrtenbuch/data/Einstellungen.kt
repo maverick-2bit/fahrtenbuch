@@ -11,6 +11,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
+import org.json.JSONObject
 
 private val Context.dataStore by preferencesDataStore(name = "einstellungen")
 
@@ -30,6 +32,31 @@ data class EinstellungenWerte(
     val blitzerAnsage: Boolean = true,
 )
 
+/** Bluetooth-Gerät (z. B. Freisprecheinrichtung des Autos), das eine Fahrt automatisch startet. */
+data class BtGeraet(val adresse: String, val name: String)
+
+data class AutoStartStand(
+    /** Fahrt automatisch starten, wenn das Handy mit einem der Geräte verbunden ist und losfährt. */
+    val aktiv: Boolean = false,
+    val geraete: List<BtGeraet> = emptyList(),
+) {
+    /** Android liefert die Adresse je nach Stelle in Groß- oder Kleinbuchstaben. */
+    fun geraet(adresse: String): BtGeraet? = geraete.firstOrNull { it.adresse.equals(adresse, ignoreCase = true) }
+}
+
+object BtGeraete {
+    fun lesen(json: String?): List<BtGeraet> {
+        if (json.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val a = JSONArray(json)
+            (0 until a.length()).map { i -> a.getJSONObject(i).let { BtGeraet(it.getString("adresse"), it.optString("name")) } }
+        }.getOrDefault(emptyList())
+    }
+
+    fun schreiben(liste: List<BtGeraet>): String =
+        JSONArray().apply { liste.forEach { put(JSONObject().put("adresse", it.adresse).put("name", it.name)) } }.toString()
+}
+
 data class SyncStand(
     val server: String = "",
     val code: String = "",
@@ -38,6 +65,19 @@ data class SyncStand(
     val meldung: String = "",
 ) {
     val verbunden: Boolean get() = server.isNotBlank() && code.isNotBlank()
+}
+
+data class PrivatStand(
+    val datenSchluessel: String = "",
+    val huelle: String = "",
+    val huelleGesendet: Boolean = false,
+    /** Hülle eines früheren Geräts vom Server – muss erst mit dem bisherigen PIN übernommen werden. */
+    val offeneHuelle: String = "",
+) {
+    val hatPin: Boolean get() = datenSchluessel.isNotBlank() && huelle.isNotBlank()
+
+    /** Privatfahrten dürfen hinaus: PIN festgelegt und keine Hülle eines früheren Geräts mehr offen. */
+    val bereit: Boolean get() = hatPin && offeneHuelle.isBlank()
 }
 
 class Einstellungen(private val context: Context) {
@@ -56,6 +96,66 @@ class Einstellungen(private val context: Context) {
         val SYNC_FAHRER = stringPreferencesKey("sync_fahrer")
         val SYNC_ZULETZT = longPreferencesKey("sync_zuletzt")
         val SYNC_MELDUNG = stringPreferencesKey("sync_meldung")
+        val PRIVAT_DEK = stringPreferencesKey("privat_datenschluessel")
+        val PRIVAT_HUELLE = stringPreferencesKey("privat_huelle")
+        val PRIVAT_HUELLE_GESENDET = booleanPreferencesKey("privat_huelle_gesendet")
+        val PRIVAT_OFFENE_HUELLE = stringPreferencesKey("privat_offene_huelle")
+        val AUTO_START = booleanPreferencesKey("auto_start")
+        val AUTO_START_GERAETE = stringPreferencesKey("auto_start_geraete")
+    }
+
+    /** Automatischer Start per Bluetooth – getrennt gespeichert, damit „Speichern“ anderer Einstellungen ihn nie überschreibt. */
+    val autoStart: Flow<AutoStartStand> = context.dataStore.data.map {
+        AutoStartStand(aktiv = it[Keys.AUTO_START] ?: false, geraete = BtGeraete.lesen(it[Keys.AUTO_START_GERAETE]))
+    }
+
+    suspend fun autoStartAktuell(): AutoStartStand = autoStart.first()
+
+    suspend fun autoStartSpeichern(stand: AutoStartStand) {
+        context.dataStore.edit {
+            it[Keys.AUTO_START] = stand.aktiv
+            it[Keys.AUTO_START_GERAETE] = BtGeraete.schreiben(stand.geraete)
+        }
+    }
+
+    /**
+     * Schlüssel für Privatfahrten: Der Datenschlüssel bleibt auf dem Handy; an den Server geht nur die
+     * mit dem PIN verschlüsselte Hülle. Der PIN selbst wird nirgends gespeichert.
+     */
+    val privat: Flow<PrivatStand> = context.dataStore.data.map {
+        PrivatStand(
+            datenSchluessel = it[Keys.PRIVAT_DEK].orEmpty(),
+            huelle = it[Keys.PRIVAT_HUELLE].orEmpty(),
+            huelleGesendet = it[Keys.PRIVAT_HUELLE_GESENDET] ?: false,
+            offeneHuelle = it[Keys.PRIVAT_OFFENE_HUELLE].orEmpty(),
+        )
+    }
+
+    suspend fun privatAktuell(): PrivatStand = privat.first()
+
+    /** Neuer oder geänderter PIN – ersetzt auch eine noch offene Hülle eines früheren Geräts („PIN vergessen“). */
+    suspend fun privatSpeichern(datenSchluessel: String, huelle: String) {
+        context.dataStore.edit {
+            it[Keys.PRIVAT_DEK] = datenSchluessel
+            it[Keys.PRIVAT_HUELLE] = huelle
+            it[Keys.PRIVAT_HUELLE_GESENDET] = false
+            it.remove(Keys.PRIVAT_OFFENE_HUELLE)
+        }
+    }
+
+    /** Datenschlüssel eines früheren Geräts übernommen: Die Hülle liegt schon am Server. */
+    suspend fun privatUebernehmen(datenSchluessel: String, huelle: String) {
+        context.dataStore.edit {
+            it[Keys.PRIVAT_DEK] = datenSchluessel
+            it[Keys.PRIVAT_HUELLE] = huelle
+            it[Keys.PRIVAT_HUELLE_GESENDET] = true
+            it.remove(Keys.PRIVAT_OFFENE_HUELLE)
+        }
+    }
+
+    suspend fun privatHuelleGesendet(huelle: String) {
+        // Nur bestätigen, wenn inzwischen kein neuer PIN festgelegt wurde
+        context.dataStore.edit { if (it[Keys.PRIVAT_HUELLE] == huelle) it[Keys.PRIVAT_HUELLE_GESENDET] = true }
     }
 
     /** Verbindung zur Online-Sicherung – getrennt gespeichert, damit „Speichern“ anderer Einstellungen sie nie überschreibt. */
@@ -71,12 +171,37 @@ class Einstellungen(private val context: Context) {
 
     suspend fun syncAktuell(): SyncStand = sync.first()
 
-    suspend fun syncVerbinden(server: String, code: String, fahrer: String) {
+    /**
+     * @param serverHuelle Schlüsselhülle, die der Server für diesen Fahrer schon hat (früheres Gerät), sonst null
+     * @param gleicheHuelle vergleicht zwei Hüllen inhaltlich (Reihenfolge der JSON-Felder egal)
+     */
+    suspend fun syncVerbinden(
+        server: String,
+        code: String,
+        fahrer: String,
+        serverHuelle: String? = null,
+        gleicheHuelle: (String, String) -> Boolean = { a, b -> a == b },
+    ) {
         context.dataStore.edit {
             it[Keys.SYNC_SERVER] = server
             it[Keys.SYNC_CODE] = code
             it[Keys.SYNC_FAHRER] = fahrer
             it[Keys.SYNC_MELDUNG] = ""
+            val eigene = it[Keys.PRIVAT_HUELLE].orEmpty()
+            when {
+                // Server kennt noch keinen Schlüssel: eigene Hülle (falls vorhanden) übertragen
+                serverHuelle.isNullOrBlank() -> {
+                    it[Keys.PRIVAT_HUELLE_GESENDET] = false
+                    it.remove(Keys.PRIVAT_OFFENE_HUELLE)
+                }
+                eigene.isNotBlank() && gleicheHuelle(eigene, serverHuelle) -> {
+                    it[Keys.PRIVAT_HUELLE_GESENDET] = true
+                    it.remove(Keys.PRIVAT_OFFENE_HUELLE)
+                }
+                // Hülle eines früheren Geräts: erst per PIN übernehmen, sonst würden die schon
+                // gesicherten Privatfahrten mit einem neuen Schlüssel unlesbar
+                else -> it[Keys.PRIVAT_OFFENE_HUELLE] = serverHuelle
+            }
         }
     }
 

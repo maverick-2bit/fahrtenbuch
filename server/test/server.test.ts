@@ -1,7 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 
-const BASIS = "https://fahrtenbuch.2bit.at";
+const BASIS = "https://fahrtenbuch.smarte.events";
 const PASSWORT = "Test-Passwort-fuer-Vitest-42";
 
 async function anfrage(pfad: string, init: RequestInit = {}) {
@@ -108,7 +108,7 @@ describe("Fahrer und Geräte-Code", () => {
     expect(f.link).toBe(`${BASIS}/verbinden#code=${f.code}`);
 
     const ich = await anfrage("/api/v1/ich", { headers: { authorization: `Bearer ${f.code}` } });
-    expect(await ich.json()).toEqual({ fahrer: { name: "Thomas" } });
+    expect(await ich.json()).toEqual({ fahrer: { name: "Thomas" }, schluessel: null });
 
     const neu = await adminPost(cookie, `/api/admin/fahrer/${f.id}/code`, {});
     const { code } = await neu.json<{ code: string }>();
@@ -252,6 +252,51 @@ describe("Synchronisation und Änderungsprotokoll", () => {
     const prot = await p.json<{ fassungen: { version: number; daten: { distanzMeter: number } }[] }>();
     expect(prot.fassungen).toHaveLength(1);
     expect(prot.fassungen[0].daten.distanzMeter).toBe(7_660);
+  });
+
+  it("speichert Privatfahrten nur verschlüsselt, samt Schlüsselhülle des Fahrers", async () => {
+    const huelle = { v: 1, iter: 310000, salt: "AQIDBAUGBwgJCgsMDQ4PEA==", iv: "ZGVmZ2hpamtsbW5v", ct: "WEM8D4tb13Z/J45k3KQOfMNY00I86zSe7oyPy/WnyJ9eiQ7FhWccsUHJ9/odcuno" };
+    const geheim = { v: 1, iv: "MjM0NTY3ODk6Ozw9", ct: "fa5eQmMNq0RuaIhlcL2e/JTKxJ6qjjyvLk4Hvt5eMuJHDejD" };
+    const r = await sync(code, {
+      schluessel: huelle,
+      kategorien,
+      eintraege: [
+        {
+          eintragId: "e-00000070", uuid: "fahrt-000070", aktion: "neu", zeit: 1,
+          // Klartext, der trotz Verschlüsselung mitkommt, darf nicht gespeichert werden
+          daten: fahrtDaten({ kategorieId: 2, status: "fertig", geheim, startAdresse: "Geheim", notiz: "Geheim" }),
+        },
+      ],
+    });
+    expect((await r.json<{ angenommen: string[] }>()).angenommen).toEqual(["e-00000070"]);
+
+    const f = await env.DB.prepare("SELECT start_adresse, ende_adresse, notiz, start_lat, geheim FROM fahrten WHERE uuid = 'fahrt-000070'").first<Record<string, unknown>>();
+    expect(f).toMatchObject({ start_adresse: "", ende_adresse: "", notiz: "", start_lat: null });
+    expect(JSON.parse(String(f!.geheim))).toEqual(geheim);
+    const p = await env.DB.prepare("SELECT daten FROM fahrten_protokoll WHERE uuid = 'fahrt-000070'").first<{ daten: string }>();
+    expect(p!.daten).not.toContain("Geheim");
+    expect(p!.daten).not.toContain("47.38");
+
+    // Ein neues Gerät bekommt die Hülle, um mit dem PIN den bisherigen Datenschlüssel zu übernehmen
+    const ich = await anfrage("/api/v1/ich", { headers: { authorization: `Bearer ${code}` } });
+    expect((await ich.json<{ schluessel: unknown }>()).schluessel).toEqual(huelle);
+
+    const a = await anfrage(`/api/admin/fahrten?fahrer=${fahrerId}&von=0&bis=${Date.UTC(2030, 0, 1)}`, { headers: { cookie } });
+    const d = await a.json<{ fahrer: { schluessel: string }; fahrten: { geheim: string }[] }>();
+    expect(JSON.parse(d.fahrer.schluessel)).toEqual(huelle);
+    expect(JSON.parse(d.fahrten[0].geheim)).toEqual(geheim);
+  });
+
+  it("lehnt ungültige Verschlüsselungsdaten ab", async () => {
+    const r = await sync(code, {
+      eintraege: [
+        { eintragId: "e-00000080", uuid: "fahrt-000080", aktion: "neu", zeit: 1, daten: fahrtDaten({ geheim: { v: 2, iv: "x", ct: "y" } }) },
+      ],
+    });
+    const d = await r.json<{ abgelehnt: { eintragId: string }[] }>();
+    expect(d.abgelehnt.map((x) => x.eintragId)).toEqual(["e-00000080"]);
+    const kaputt = await sync(code, { schluessel: { v: 1, iter: 10, salt: "AQIDBAUGBwgJCgsMDQ4PEA==", iv: "ZGVmZ2hpamtsbW5v", ct: "WEM8" } });
+    expect(kaputt.status).toBe(400);
   });
 
   it("verweigert den Sync ohne gültigen Code", async () => {

@@ -1,0 +1,17 @@
+{
+  "name": "Fahrtenbuch",
+  "short_name": "Fahrtenbuch",
+  "description": "Digitales Fahrtenbuch mit GPS-Aufzeichnung und Online-Sicherung",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f7fb",
+  "theme_color": "#1e5aa8",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -2,8 +2,22 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   X-Frame-Options: DENY
-  Permissions-Policy: camera=(), microphone=(), geolocation=()
   Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
 
+# Permissions-Policy je Bereich: Doppelt gesetzte Kopfzeilen würde Cloudflare mit Komma verbinden,
+# dann gälte das strengere „geolocation=()“ auch für die Web-App.
+/
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
 /admin/*
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Cache-Control: no-cache
+
+/verbinden/*
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# iPhone-Web-App: braucht den Standort; no-cache, damit Updates sofort ankommen (der Service Worker
+# lädt ohnehin zuerst aus dem Netz und nur ohne Netz aus dem Zwischenspeicher)
+/app/*
+  Permissions-Policy: camera=(), microphone=(), geolocation=(self)
   Cache-Control: no-cache

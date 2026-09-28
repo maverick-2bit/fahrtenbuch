@@ -9,6 +9,10 @@ data class LiveZustand(
     val blitzerAktiv: Boolean = false,
     val blitzerAnzahl: Int = 0,
     val voraus: Warnung? = null,
+    /** Mit diesem Auto verbunden, Fahrt startet beim Losfahren (null = wartet nicht). */
+    val wartetAuf: String? = null,
+    /** Mit diesem Auto verbunden, während eine Fahrt läuft – Stillstand beendet sie dann nicht. */
+    val auto: String? = null,
 )
 
 object LiveStatus {

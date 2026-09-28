@@ -1,20 +1,32 @@
 {
-  // Produktion: Cloudflare Pages (Projekt „fahrtenbuch“, Adresse fahrtenbuch.2bit.at per CNAME bei domaintechnik).
-  // Tests und lokale Entwicklung nutzen wrangler.test.jsonc (gleicher Code als Worker).
+  // Produktion: Cloudflare Worker mit statischen Dateien im Konto „s/e smarte events OG“, Adresse
+  // fahrtenbuch.smarte.events (eigene Domain, Zone im selben Konto – DNS und Zertifikat legt Wrangler an).
+  // Datenbank in der EU (--jurisdiction eu). Tests und lokale Entwicklung: wrangler.test.jsonc.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "fahrtenbuch",
-  "pages_build_output_dir": "./public",
+  "account_id": "f1c8788eb10870b12ac498a71b81d1f3",
+  "main": "src/index.ts",
   "compatibility_date": "2026-08-22",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/.well-known/*"],
+    "not_found_handling": "404-page"
+  },
+  "routes": [{ "pattern": "fahrtenbuch.smarte.events", "custom_domain": true }],
+  // Nur unter der eigenen Adresse erreichbar (die App akzeptiert ohnehin nur diese)
+  "workers_dev": false,
+  "preview_urls": false,
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "fahrtenbuch",
-      "database_id": "1c554ee1-b81c-49a5-b351-314eda944046",
+      "database_id": "e0633174-21dd-454d-a4ec-14d74efa63f0",
       "migrations_dir": "migrations"
     }
   ],
   "vars": {
-    "OEFFENTLICHE_ADRESSE": "https://fahrtenbuch.2bit.at",
+    "OEFFENTLICHE_ADRESSE": "https://fahrtenbuch.smarte.events",
     "APP_PAKET": "at.zweibit.fahrtenbuch",
     // SHA-256-Fingerabdruck des App-Signaturschlüssels (für Android App Links)
     "APP_ZERTIFIKAT_SHA256": "6F:76:48:B0:3E:4D:9C:F7:9A:A0:75:91:D7:B9:BC:F3:1A:07:4A:B6:A0:34:1B:BA:3E:AF:67:DA:89:8D:B1:BB"

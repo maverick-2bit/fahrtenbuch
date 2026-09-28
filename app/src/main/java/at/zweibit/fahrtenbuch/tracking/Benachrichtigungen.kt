@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import at.zweibit.fahrtenbuch.MainActivity
 import at.zweibit.fahrtenbuch.R
+import at.zweibit.fahrtenbuch.data.BtGeraet
 import at.zweibit.fahrtenbuch.data.Kategorie
 import at.zweibit.fahrtenbuch.util.Format
 
@@ -17,8 +18,10 @@ object Benachrichtigungen {
     const val KANAL_LAUFEND = "fahrt_laufend"
     const val KANAL_BEENDET = "fahrt_beendet"
     const val KANAL_BLITZER = "blitzer"
+    const val KANAL_AUTO = "auto_start"
     const val ID_LAUFEND = 1
     private const val ID_BLITZER = 2
+    private const val ID_AUTO_FRAGE = 3
     private const val ID_BEENDET_BASIS = 1000
 
     fun kanaeleAnlegen(context: Context) {
@@ -30,6 +33,10 @@ object Benachrichtigungen {
         nm.createNotificationChannel(
             NotificationChannel(KANAL_BEENDET, "Fahrt beendet", NotificationManager.IMPORTANCE_HIGH)
                 .apply { description = "Fragt nach der Kategorie einer beendeten Fahrt." }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(KANAL_AUTO, "Automatischer Start", NotificationManager.IMPORTANCE_HIGH)
+                .apply { description = "Fragt beim Verbinden mit dem Auto, ob die Fahrt aufgezeichnet werden soll." }
         )
         nm.createNotificationChannel(
             NotificationChannel(KANAL_BLITZER, "Blitzer-Warnung", NotificationManager.IMPORTANCE_HIGH).apply {
@@ -92,6 +99,59 @@ object Benachrichtigungen {
             .addAction(0, "Pause (Zwischenziel)", dienstAktion(context, 2, TrackingService.ACTION_PAUSE))
             .addAction(0, context.getString(R.string.notification_stop), dienstAktion(context, 1, TrackingService.ACTION_STOPP))
             .build()
+    }
+
+    /** Mit dem Auto verbunden: Die Fahrt startet, sobald es losfährt. */
+    fun wartet(context: Context, auto: String): Notification =
+        NotificationCompat.Builder(context, KANAL_LAUFEND)
+            .setSmallIcon(R.drawable.ic_stat_fahrt)
+            .setContentTitle("Mit „$auto“ verbunden")
+            .setContentText("Die Fahrt startet, sobald du losfährst.")
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setContentIntent(appOeffnen(context))
+            .addAction(0, "Jetzt starten", dienstAktion(context, 4, TrackingService.ACTION_START))
+            .addAction(0, "Nicht aufzeichnen", dienstAktion(context, 5, TrackingService.ACTION_NICHT_AUFZEICHNEN))
+            .build()
+
+    /**
+     * Rückfall, wenn Android den Start im Hintergrund nicht erlaubt (Freigaben fehlen): Ein Tipp auf
+     * „Fahrt starten“ ist immer erlaubt und startet die Aufzeichnung sofort.
+     */
+    fun autoStartFrage(context: Context, g: BtGeraet, rechte: AutoStartRechte) {
+        // Kommt aus dem Bluetooth-Empfänger, womöglich bevor App oder Dienst die Kanäle angelegt haben
+        kanaeleAnlegen(context)
+        val starten = PendingIntent.getForegroundService(
+            context, 6, TrackingService.startIntent(context, g),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val n = NotificationCompat.Builder(context, KANAL_AUTO)
+            .setSmallIcon(R.drawable.ic_stat_fahrt)
+            .setContentTitle("Mit „${g.name}“ verbunden")
+            .setContentText("Fahrt aufzeichnen?")
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    if (rechte.vollstaendig) "Fahrt aufzeichnen?"
+                    else "Fahrt aufzeichnen? Damit das künftig ohne Antippen geht, unter Einstellungen → Automatisch starten die fehlenden Freigaben erteilen."
+                )
+            )
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .setTimeoutAfter(15 * 60_000L)
+            .setContentIntent(appOeffnen(context))
+            .addAction(0, "Fahrt starten", starten)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(ID_AUTO_FRAGE, n)
+        } catch (_: SecurityException) {
+        }
+    }
+
+    fun autoStartFrageEntfernen(context: Context) {
+        NotificationManagerCompat.from(context).cancel(ID_AUTO_FRAGE)
     }
 
     /** Während einer Pause unterwegs: Zwischenziel anzeigen, Weiterfahren oder Beenden anbieten. */
