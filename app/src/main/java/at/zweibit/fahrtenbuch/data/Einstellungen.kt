@@ -30,6 +30,16 @@ data class EinstellungenWerte(
     val blitzerAnsage: Boolean = true,
 )
 
+data class SyncStand(
+    val server: String = "",
+    val code: String = "",
+    val fahrer: String = "",
+    val zuletzt: Long = 0L,
+    val meldung: String = "",
+) {
+    val verbunden: Boolean get() = server.isNotBlank() && code.isNotBlank()
+}
+
 class Einstellungen(private val context: Context) {
     private object Keys {
         val AUTO_STOPP = intPreferencesKey("auto_stopp_minuten")
@@ -41,6 +51,50 @@ class Einstellungen(private val context: Context) {
         val BLITZER = booleanPreferencesKey("blitzer_warnung")
         val BLITZER_ANSAGE = booleanPreferencesKey("blitzer_ansage")
         val ORTE = stringPreferencesKey("orte")
+        val SYNC_SERVER = stringPreferencesKey("sync_server")
+        val SYNC_CODE = stringPreferencesKey("sync_code")
+        val SYNC_FAHRER = stringPreferencesKey("sync_fahrer")
+        val SYNC_ZULETZT = longPreferencesKey("sync_zuletzt")
+        val SYNC_MELDUNG = stringPreferencesKey("sync_meldung")
+    }
+
+    /** Verbindung zur Online-Sicherung – getrennt gespeichert, damit „Speichern“ anderer Einstellungen sie nie überschreibt. */
+    val sync: Flow<SyncStand> = context.dataStore.data.map {
+        SyncStand(
+            server = it[Keys.SYNC_SERVER].orEmpty(),
+            code = it[Keys.SYNC_CODE].orEmpty(),
+            fahrer = it[Keys.SYNC_FAHRER].orEmpty(),
+            zuletzt = it[Keys.SYNC_ZULETZT] ?: 0L,
+            meldung = it[Keys.SYNC_MELDUNG].orEmpty(),
+        )
+    }
+
+    suspend fun syncAktuell(): SyncStand = sync.first()
+
+    suspend fun syncVerbinden(server: String, code: String, fahrer: String) {
+        context.dataStore.edit {
+            it[Keys.SYNC_SERVER] = server
+            it[Keys.SYNC_CODE] = code
+            it[Keys.SYNC_FAHRER] = fahrer
+            it[Keys.SYNC_MELDUNG] = ""
+        }
+    }
+
+    suspend fun syncTrennen() {
+        context.dataStore.edit {
+            it.remove(Keys.SYNC_SERVER)
+            it.remove(Keys.SYNC_CODE)
+            it.remove(Keys.SYNC_FAHRER)
+            it.remove(Keys.SYNC_MELDUNG)
+        }
+    }
+
+    /** @param zuletzt Zeitpunkt einer erfolgreichen Sicherung oder null bei Fehler */
+    suspend fun syncErgebnis(zuletzt: Long?, meldung: String) {
+        context.dataStore.edit {
+            if (zuletzt != null) it[Keys.SYNC_ZULETZT] = zuletzt
+            it[Keys.SYNC_MELDUNG] = meldung
+        }
     }
 
     val werte: Flow<EinstellungenWerte> = context.dataStore.data.map { it.zuWerten() }

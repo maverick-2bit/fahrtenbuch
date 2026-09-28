@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Fahrtenbuch verbinden</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/admin/stil.css">
+  <script type="module" src="/verbinden/verbinden.js"></script>
+</head>
+<body>
+  <main class="inhalt">
+    <div class="karte anmeldung">
+      <h1>Fahrtenbuch verbinden</h1>
+      <p class="unter">Mit diesem Link sichert die Fahrtenbuch-App deine Fahrten automatisch.</p>
+
+      <div id="fehlt" hidden>
+        <p class="fehler">Der Link ist unvollständig. Bitte den QR-Code erneut scannen.</p>
+      </div>
+
+      <div id="android" hidden>
+        <ol>
+          <li>Falls noch nicht geschehen: <a id="installieren" href="https://github.com/maverick-2bit/fahrtenbuch/releases/latest">Fahrtenbuch-App herunterladen</a>, die Datei öffnen und installieren.</li>
+          <li>Dann hier tippen: <a id="verbinden" class="knopf haupt" href="#">Mit der App verbinden</a></li>
+        </ol>
+      </div>
+
+      <div id="iphone" hidden>
+        <p>Für das iPhone gibt es das Fahrtenbuch bald als Web-App. Bis dahin diesen Link bitte aufbewahren.</p>
+      </div>
+
+      <div id="pc" hidden>
+        <p>Bitte diesen Link am Handy öffnen oder den QR-Code mit der Handy-Kamera scannen.</p>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

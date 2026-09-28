@@ -1,0 +1,372 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 3,
+    "identityHash": "ca3b2d76fecf656a923a06df439115e2",
+    "entities": [
+      {
+        "tableName": "kategorien",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `farbe` INTEGER NOT NULL, `sortierung` INTEGER NOT NULL, `aktiv` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "farbe",
+            "columnName": "farbe",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortierung",
+            "columnName": "sortierung",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aktiv",
+            "columnName": "aktiv",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "fahrten",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `uuid` TEXT NOT NULL DEFAULT '', `startZeit` INTEGER NOT NULL, `endeZeit` INTEGER, `startAdresse` TEXT NOT NULL, `endeAdresse` TEXT NOT NULL, `startLat` REAL, `startLon` REAL, `endeLat` REAL, `endeLon` REAL, `distanzMeter` REAL NOT NULL, `kategorieId` INTEGER, `notiz` TEXT NOT NULL, `status` TEXT NOT NULL, `zwischenziele` TEXT NOT NULL DEFAULT '', FOREIGN KEY(`kategorieId`) REFERENCES `kategorien`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uuid",
+            "columnName": "uuid",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "startZeit",
+            "columnName": "startZeit",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endeZeit",
+            "columnName": "endeZeit",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "startAdresse",
+            "columnName": "startAdresse",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endeAdresse",
+            "columnName": "endeAdresse",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startLat",
+            "columnName": "startLat",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "startLon",
+            "columnName": "startLon",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "endeLat",
+            "columnName": "endeLat",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "endeLon",
+            "columnName": "endeLon",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "distanzMeter",
+            "columnName": "distanzMeter",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kategorieId",
+            "columnName": "kategorieId",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "notiz",
+            "columnName": "notiz",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "zwischenziele",
+            "columnName": "zwischenziele",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_fahrten_kategorieId",
+            "unique": false,
+            "columnNames": [
+              "kategorieId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_fahrten_kategorieId` ON `${TABLE_NAME}` (`kategorieId`)"
+          },
+          {
+            "name": "index_fahrten_startZeit",
+            "unique": false,
+            "columnNames": [
+              "startZeit"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_fahrten_startZeit` ON `${TABLE_NAME}` (`startZeit`)"
+          },
+          {
+            "name": "index_fahrten_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_fahrten_status` ON `${TABLE_NAME}` (`status`)"
+          },
+          {
+            "name": "index_fahrten_uuid",
+            "unique": true,
+            "columnNames": [
+              "uuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_fahrten_uuid` ON `${TABLE_NAME}` (`uuid`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "kategorien",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "kategorieId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "trackpunkte",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `fahrtId` INTEGER NOT NULL, `zeit` INTEGER NOT NULL, `lat` REAL NOT NULL, `lon` REAL NOT NULL, `genauigkeit` REAL NOT NULL, `geschwindigkeit` REAL NOT NULL, FOREIGN KEY(`fahrtId`) REFERENCES `fahrten`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fahrtId",
+            "columnName": "fahrtId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "zeit",
+            "columnName": "zeit",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lat",
+            "columnName": "lat",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lon",
+            "columnName": "lon",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "genauigkeit",
+            "columnName": "genauigkeit",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "geschwindigkeit",
+            "columnName": "geschwindigkeit",
+            "affinity": "REAL",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_trackpunkte_fahrtId",
+            "unique": false,
+            "columnNames": [
+              "fahrtId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_trackpunkte_fahrtId` ON `${TABLE_NAME}` (`fahrtId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "fahrten",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "fahrtId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "protokoll",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `eintragId` TEXT NOT NULL, `fahrtUuid` TEXT NOT NULL, `aktion` TEXT NOT NULL, `zeit` INTEGER NOT NULL, `daten` TEXT NOT NULL, `gesendet` INTEGER NOT NULL, `meldung` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eintragId",
+            "columnName": "eintragId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fahrtUuid",
+            "columnName": "fahrtUuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aktion",
+            "columnName": "aktion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "zeit",
+            "columnName": "zeit",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "daten",
+            "columnName": "daten",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gesendet",
+            "columnName": "gesendet",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meldung",
+            "columnName": "meldung",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_protokoll_gesendet",
+            "unique": false,
+            "columnNames": [
+              "gesendet"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_protokoll_gesendet` ON `${TABLE_NAME}` (`gesendet`)"
+          },
+          {
+            "name": "index_protokoll_fahrtUuid",
+            "unique": false,
+            "columnNames": [
+              "fahrtUuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_protokoll_fahrtUuid` ON `${TABLE_NAME}` (`fahrtUuid`)"
+          }
+        ],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ca3b2d76fecf656a923a06df439115e2')"
+    ]
+  }
+}

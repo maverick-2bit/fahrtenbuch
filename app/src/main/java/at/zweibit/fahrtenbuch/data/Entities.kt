@@ -7,6 +7,33 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.Relation
+import java.util.UUID
+
+/**
+ * Änderungsprotokoll der App: Jede abgeschlossene Fahrt und jede spätere Änderung oder Löschung
+ * wird als eigener Eintrag festgehalten und an die Online-Sicherung übertragen. Seit DB-Version 3.
+ */
+@Entity(tableName = "protokoll", indices = [Index("gesendet"), Index("fahrtUuid")])
+data class ProtokollEintrag(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** Eindeutige Kennung des Eintrags – der Server erkennt daran doppelt gesendete Einträge. */
+    val eintragId: String = UUID.randomUUID().toString(),
+    val fahrtUuid: String,
+    /** neu | geaendert | geloescht */
+    val aktion: String,
+    val zeit: Long,
+    /** Vollständiger Stand der Fahrt als JSON. */
+    val daten: String,
+    /** 0 = noch nicht übertragen, 1 = vom Server angenommen, 2 = vom Server abgelehnt */
+    val gesendet: Int = 0,
+    val meldung: String = "",
+)
+
+object ProtokollAktion {
+    const val NEU = "neu"
+    const val GEAENDERT = "geaendert"
+    const val GELOESCHT = "geloescht"
+}
 
 object FahrtStatus {
     const val LAUFEND = "laufend"
@@ -48,10 +75,13 @@ data class Kategorie(
             onDelete = ForeignKey.SET_NULL,
         )
     ],
-    indices = [Index("kategorieId"), Index("startZeit"), Index("status")],
+    indices = [Index("kategorieId"), Index("startZeit"), Index("status"), Index(value = ["uuid"], unique = true)],
 )
 data class Fahrt(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** Weltweit eindeutige Kennung für die Online-Sicherung. Seit DB-Version 3. */
+    @ColumnInfo(defaultValue = "")
+    val uuid: String = UUID.randomUUID().toString(),
     val startZeit: Long,
     val endeZeit: Long? = null,
     val startAdresse: String = "",

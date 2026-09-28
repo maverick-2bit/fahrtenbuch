@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fahrtenbuch",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-22",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    // API und App-Link-Datei laufen durch den Worker, alles andere sind statische Dateien
+    "run_worker_first": ["/api/*", "/.well-known/*"],
+    "not_found_handling": "404-page"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "fahrtenbuch",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "routes": [{ "pattern": "fahrtenbuch.smarte.events", "custom_domain": true }],
+  "vars": {
+    "APP_PAKET": "at.zweibit.fahrtenbuch",
+    // SHA-256-Fingerabdruck des App-Signaturschlüssels (für Android App Links)
+    "APP_ZERTIFIKAT_SHA256": "6F:76:48:B0:3E:4D:9C:F7:9A:A0:75:91:D7:B9:BC:F3:1A:07:4A:B6:A0:34:1B:BA:3E:AF:67:DA:89:8D:B1:BB"
+  },
+  "observability": { "enabled": true }
+}

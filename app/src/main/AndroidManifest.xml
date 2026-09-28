@@ -38,6 +38,25 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- QR-Code der Fahrtenbuch-Verwaltung: öffnet direkt die App (Android App Link) -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="fahrtenbuch.smarte.events"
+                    android:pathPrefix="/verbinden" />
+            </intent-filter>
+            <!-- Rückfallweg der Verbindungsseite -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="fahrtenbuch"
+                    android:host="verbinden" />
+            </intent-filter>
         </activity>
 
         <service

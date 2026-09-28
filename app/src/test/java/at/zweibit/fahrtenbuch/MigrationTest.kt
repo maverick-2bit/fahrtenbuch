@@ -41,8 +41,9 @@ class MigrationTest {
     private fun schema(version: Int) =
         JSONObject(File("schemas/at.zweibit.fahrtenbuch.data.AppDatabase/$version.json").readText()).getJSONObject("database")
 
-    private fun alteDatenbankAnlegen() {
-        val s = schema(1)
+    /** Baut eine Datenbank exakt nach dem exportierten Schema der angegebenen (alten) Version auf. */
+    private fun alteDatenbankAnlegen(version: Int) {
+        val s = schema(version)
         val db = SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(name).apply { parentFile?.mkdirs() }, null)
         val entities = s.getJSONArray("entities")
         for (i in 0 until entities.length()) {
@@ -73,31 +74,95 @@ class MigrationTest {
             "INSERT INTO fahrten (id, startZeit, startAdresse, endeAdresse, distanzMeter, notiz, status) " +
                 "VALUES (2, 1759060000000, 'Hauptstraße 1, 8700 Leoben', '', 1200.0, '', 'laufend')"
         )
-        db.version = 1
+        db.version = version
         db.close()
+    }
+
+    private fun oeffnen() = Room.databaseBuilder(context, AppDatabase::class.java, name)
+        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+        .allowMainThreadQueries()
+        .build()
+
+    private val uuidFormat = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+
+    /**
+     * Vergleicht die Indizes der migrierten Datenbank mit dem Soll-Schema. Room selbst überspringt
+     * diese Prüfung in der Testumgebung, am Gerät würde ein fehlender Index aber zum Absturz führen.
+     */
+    private fun indizesPruefen(db: AppDatabase) {
+        val sql = db.openHelper.readableDatabase
+        val entities = schema(3).getJSONArray("entities")
+        for (i in 0 until entities.length()) {
+            val e = entities.getJSONObject(i)
+            val tabelle = e.getString("tableName")
+            val erwartet = mutableSetOf<String>()
+            e.optJSONArray("indices")?.let { liste ->
+                for (j in 0 until liste.length()) {
+                    val x = liste.getJSONObject(j)
+                    val spalten = x.getJSONArray("columnNames")
+                    erwartet += "${x.getString("name")}|${x.getBoolean("unique")}|" +
+                        (0 until spalten.length()).joinToString(",") { spalten.getString(it) }
+                }
+            }
+            val vorhanden = mutableSetOf<String>()
+            sql.query("PRAGMA index_list(`$tabelle`)").use { c ->
+                while (c.moveToNext()) {
+                    val name = c.getString(c.getColumnIndexOrThrow("name"))
+                    if (name.startsWith("sqlite_autoindex")) continue
+                    val unique = c.getInt(c.getColumnIndexOrThrow("unique")) == 1
+                    val spalten = mutableListOf<String>()
+                    sql.query("PRAGMA index_info(`$name`)").use { ic ->
+                        while (ic.moveToNext()) spalten += ic.getString(ic.getColumnIndexOrThrow("name"))
+                    }
+                    vorhanden += "$name|$unique|${spalten.joinToString(",")}"
+                }
+            }
+            assertEquals("Indizes der Tabelle $tabelle", erwartet, vorhanden)
+        }
+    }
+
+    private suspend fun datenPruefen(db: AppDatabase) {
+        indizesPruefen(db)
+        val f = db.fahrtDao().holen(1)!!
+        assertEquals("Kundenweg 5, 8010 Graz", f.endeAdresse)
+        assertEquals(62345.6, f.distanzMeter, 0.001)
+        assertEquals(1L, f.kategorieId)
+        assertEquals("", f.zwischenziele)
+        assertEquals(1, db.fahrtDao().punkte(1).size)
+        assertEquals(FahrtStatus.LAUFEND, db.fahrtDao().laufendeEinmal()!!.status)
+        assertEquals(3, db.openHelper.readableDatabase.version)
+
+        // Jede bestehende Fahrt hat eine eigene Kennung im UUID-Format
+        val u1 = db.fahrtDao().holen(1)!!.uuid
+        val u2 = db.fahrtDao().holen(2)!!.uuid
+        assertTrue(u1, uuidFormat.matches(u1))
+        assertTrue(u2, uuidFormat.matches(u2))
+        assertTrue(u1 != u2)
+
+        // Zwischenziele (v2) und Protokoll (v3) sind nutzbar
+        db.fahrtDao().zwischenzieleSetzen(2, """[{"adresse":"Kunde B","an":1759061000000}]""")
+        assertEquals(listOf(Zwischenziel("Kunde B", an = 1759061000000)), db.fahrtDao().holen(2)!!.zwischenzieleListe)
+        val alt = db.protokollDao().fahrtenOhneProtokoll()
+        assertEquals(listOf(1L), alt.map { it.id }) // nur die abgeschlossene Fahrt, nicht die laufende
     }
 
     @Test
     fun updateVonVersion1BehaeltAlleDaten() = runBlocking {
-        alteDatenbankAnlegen()
-        val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.MIGRATION_1_2)
-            .allowMainThreadQueries()
-            .build()
+        alteDatenbankAnlegen(1)
+        val db = oeffnen()
         try {
-            val f = db.fahrtDao().holen(1)!!
-            assertEquals("Kundenweg 5, 8010 Graz", f.endeAdresse)
-            assertEquals(62345.6, f.distanzMeter, 0.001)
-            assertEquals(1L, f.kategorieId)
-            assertEquals("", f.zwischenziele)
-            assertEquals(1, db.fahrtDao().punkte(1).size)
-            assertEquals(FahrtStatus.LAUFEND, db.fahrtDao().laufendeEinmal()!!.status)
-            assertEquals(2, db.openHelper.readableDatabase.version)
+            datenPruefen(db)
+        } finally {
+            db.close()
+        }
+    }
 
-            // Neue Spalte ist nutzbar
-            db.fahrtDao().zwischenzieleSetzen(2, """[{"adresse":"Kunde B","an":1759061000000}]""")
-            val z = db.fahrtDao().holen(2)!!.zwischenzieleListe
-            assertEquals(listOf(Zwischenziel("Kunde B", an = 1759061000000)), z)
+    @Test
+    fun updateVonVersion2BehaeltAlleDaten() = runBlocking {
+        alteDatenbankAnlegen(2)
+        val db = oeffnen()
+        try {
+            datenPruefen(db)
         } finally {
             db.close()
         }

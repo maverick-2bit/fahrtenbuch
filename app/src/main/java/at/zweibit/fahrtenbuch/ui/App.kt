@@ -32,6 +32,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import at.zweibit.fahrtenbuch.sync.Verbindung
+import at.zweibit.fahrtenbuch.ui.einstellungen.VerbindenDialog
 import at.zweibit.fahrtenbuch.ui.berichte.BerichteScreen
 import at.zweibit.fahrtenbuch.ui.einstellungen.EinstellungenScreen
 import at.zweibit.fahrtenbuch.ui.fahrt.FahrtScreen
@@ -50,11 +52,19 @@ private val ZIELE = listOf(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun AppOberflaeche(angeforderteFahrt: Long, anforderungErledigt: () -> Unit) {
+fun AppOberflaeche(
+    angeforderteFahrt: Long,
+    anforderungErledigt: () -> Unit,
+    verbindung: Verbindung? = null,
+    verbindungErledigt: () -> Unit = {},
+) {
     val nav = rememberNavController()
     val haupt: HauptViewModel = viewModel()
     val eintrag by nav.currentBackStackEntryAsState()
     val route = eintrag?.destination?.route
+
+    // QR-Code der Fahrtenbuch-Verwaltung gescannt: Verbindung zur Online-Sicherung bestätigen lassen
+    verbindung?.let { VerbindenDialog(it, fertig = verbindungErledigt) }
 
     // Bei jedem Öffnen der App: Standort aus? Dann das System-Fenster „Standort aktivieren?“ zeigen.
     val standortEinschalten = rememberStandortEinschalten()

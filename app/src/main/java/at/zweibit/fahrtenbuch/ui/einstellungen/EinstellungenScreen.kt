@@ -199,6 +199,9 @@ fun EinstellungenScreen(vm: EinstellungenViewModel = viewModel()) {
             }
         }
 
+        // ------------------------------------------------ Online-Sicherung
+        SicherungKarte()
+
         // ------------------------------------------------ Orte
         OrteKarte()
 

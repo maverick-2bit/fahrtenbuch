@@ -6,6 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import at.zweibit.fahrtenbuch.sync.SyncFormat
+import at.zweibit.fahrtenbuch.sync.Verbindung
 import at.zweibit.fahrtenbuch.tracking.Benachrichtigungen
 import at.zweibit.fahrtenbuch.ui.AppOberflaeche
 import at.zweibit.fahrtenbuch.ui.FahrtenbuchTheme
@@ -18,6 +21,9 @@ class MainActivity : ComponentActivity() {
     /** Fahrt, deren Kategorie-Dialog aus einer Benachrichtigung heraus geöffnet werden soll. */
     private val angeforderteFahrt = mutableLongStateOf(0L)
 
+    /** Verbindung zur Online-Sicherung aus einem gescannten QR-Code (App Link). */
+    private val verbindung = mutableStateOf<Verbindung?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -28,6 +34,8 @@ class MainActivity : ComponentActivity() {
                 AppOberflaeche(
                     angeforderteFahrt = angeforderteFahrt.longValue,
                     anforderungErledigt = { angeforderteFahrt.longValue = 0L },
+                    verbindung = verbindung.value,
+                    verbindungErledigt = { verbindung.value = null },
                 )
             }
         }
@@ -41,5 +49,6 @@ class MainActivity : ComponentActivity() {
     private fun uebernehmen(intent: Intent?) {
         val id = intent?.getLongExtra(EXTRA_FAHRT_ID, 0L) ?: 0L
         if (id != 0L) angeforderteFahrt.longValue = id
+        intent?.data?.toString()?.let { SyncFormat.verbindungLesen(it) }?.let { verbindung.value = it }
     }
 }

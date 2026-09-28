@@ -1,0 +1,21 @@
+{
+  "name": "fahrtenbuch-server",
+  "private": true,
+  "version": "0.4.0",
+  "description": "Fahrtenbuch Online: Datensicherung, Admin-Weboberfläche und Berichte (Cloudflare Worker + D1)",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "deploy": "wrangler d1 migrations apply fahrtenbuch --remote && wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@cloudflare/workers-types": "^5.20260928.1",
+    "qrcode-generator": "^1.4.4",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.142.0"
+  }
+}
