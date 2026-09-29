@@ -2,4 +2,6 @@
 <paths>
     <cache-path name="berichte" path="berichte/" />
     <cache-path name="update" path="update/" />
+    <!-- Kamerafotos und geöffnete PDFs der Belege -->
+    <cache-path name="belege" path="belege/" />
 </paths>

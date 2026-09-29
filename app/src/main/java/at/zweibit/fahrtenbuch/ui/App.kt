@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Settings
@@ -19,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.Lifecycle
@@ -34,6 +36,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import at.zweibit.fahrtenbuch.sync.Verbindung
 import at.zweibit.fahrtenbuch.ui.einstellungen.VerbindenDialog
+import at.zweibit.fahrtenbuch.ui.belege.BelegeAnsicht
+import at.zweibit.fahrtenbuch.ui.belege.BelegeScreen
 import at.zweibit.fahrtenbuch.ui.berichte.BerichteScreen
 import at.zweibit.fahrtenbuch.ui.einstellungen.EinstellungenScreen
 import at.zweibit.fahrtenbuch.ui.fahrt.FahrtScreen
@@ -47,6 +51,7 @@ private val ZIELE = listOf(
     Ziel("fahrt", "Fahrt", Icons.Filled.DirectionsCar),
     Ziel("fahrten", "Fahrten", Icons.AutoMirrored.Filled.List),
     Ziel("berichte", "Berichte", Icons.Filled.Assessment),
+    Ziel("belege", "Belege", Icons.AutoMirrored.Filled.ReceiptLong),
     Ziel("einstellungen", "Einstellungen", Icons.Filled.Settings),
 )
 
@@ -62,6 +67,8 @@ fun AppOberflaeche(
     val haupt: HauptViewModel = viewModel()
     val eintrag by nav.currentBackStackEntryAsState()
     val route = eintrag?.destination?.route
+    // Belege-Seite bleibt beim Wechsel zwischen den Menüpunkten geladen (halb ausgefüllte Belege)
+    val belege = remember { BelegeAnsicht() }
 
     // QR-Code der Fahrtenbuch-Verwaltung gescannt: Verbindung zur Online-Sicherung bestätigen lassen
     verbindung?.let { VerbindenDialog(it, fertig = verbindungErledigt) }
@@ -118,6 +125,7 @@ fun AppOberflaeche(
                 )
             }
             composable("berichte") { BerichteScreen(oeffnen = { id -> nav.navigate("bearbeiten/$id") }) }
+            composable("belege") { BelegeScreen(belege) }
             composable("einstellungen") { EinstellungenScreen() }
             composable(
                 "bearbeiten/{id}",

@@ -2,6 +2,14 @@
 
 Alle Änderungen am Fahrtenbuch (Android-App und Server). Versionen nach SemVer; App und Server tragen dieselbe Nummer.
 
+## [0.7.0] – 2026-09-29
+
+### Neu
+- Android-App: Menüpunkt **Belege** – die Belege-Ablage der OG (belege.smarte.events, eigener Login) direkt in
+  der App: Beleg mit der Kamera fotografieren, PDFs und Fotos aus Dateien wählen, PDFs eines Belegs mit einer
+  PDF-App öffnen, Export (ZIP, Liste) in den Download-Ordner. Die Seite bleibt beim Wechsel zwischen den
+  Menüpunkten geladen, die Zurück-Taste blättert in den Belegen zurück; ohne Netz ein Hinweis mit „Nochmal“.
+
 ## [0.6.0] – 2026-09-29
 
 ### Neu
