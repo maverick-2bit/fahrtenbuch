@@ -108,6 +108,11 @@ const TABS = [
   ["#/", "Fahrt", '<path d="M8 5v14l11-7z"/>'],
   ["#/fahrten", "Fahrten", '<path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h10v2H4z"/>'],
   ["#/berichte", "Berichte", '<path d="M5 20V10h3v10zm5.5 0V4h3v16zM16 20v-7h3v7z"/>'],
+  [
+    "#/belege",
+    "Belege",
+    '<path d="M18 17H6v-2h12zm0-4H6v-2h12zm0-4H6V7h12zM3 22l1.5-1.5L6 22l1.5-1.5L9 22l1.5-1.5L12 22l1.5-1.5L15 22l1.5-1.5L18 22l1.5-1.5L21 22V2l-1.5 1.5L18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2 4.5 3.5 3 2z"/>',
+  ],
   ["#/einstellungen", "Einstellungen", '<path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7 7 0 0 0-1.7-1L15 3h-4l-.3 2.9a7 7 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7 7 0 0 0 1.7 1L11 21h4l.3-2.9a7 7 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>'],
 ];
 
@@ -125,8 +130,53 @@ function navigation(aktiv) {
 
 let aktuelleSeite = null;
 
+// ------------------------------------------------------------------ Belege (eigene Web-App der OG)
+
+/** Belegablage der OG – eigener Login, eingebettet wie in der Android-App (Menüpunkt „Belege“). */
+const BELEGE = "https://belege.smarte.events/";
+let $belege = null;
+
+/** Rahmen genau zwischen Kopf und unterer Leiste. */
+function belegeLage() {
+  const oben = document.querySelector(".kopf").getBoundingClientRect().bottom;
+  const unten = document.getElementById("tabs").getBoundingClientRect().top;
+  $belege.style.top = `${Math.max(0, oben)}px`;
+  $belege.style.height = `${Math.max(0, unten - oben)}px`;
+}
+
+/**
+ * Zeigt die Belege. Der Rahmen wird nur einmal angelegt und danach bloß versteckt: Beim Wechsel der
+ * Menüpunkte bleibt ein halb ausgefüllter Beleg erhalten, und eine laufende Fahrt zeichnet weiter auf.
+ */
+function belegeZeigen() {
+  if (!$belege) {
+    $belege = el(
+      "div",
+      { class: "belege-rahmen" },
+      el("iframe", { src: BELEGE, title: "Belege", allow: "camera; clipboard-write" }),
+    );
+    document.body.append($belege);
+    window.addEventListener("resize", () => !$belege.hidden && belegeLage());
+  }
+  $inhalt.hidden = true;
+  $belege.hidden = false;
+  belegeLage();
+}
+
+function belegeVerbergen() {
+  if ($belege) $belege.hidden = true;
+  $inhalt.hidden = false;
+}
+
 async function route() {
   const h = location.hash || "#/";
+  if (h === "#/belege") {
+    aktuelleSeite = "belege";
+    navigation(h);
+    belegeZeigen();
+    return;
+  }
+  belegeVerbergen();
   try {
     const m = /^#\/fahrt\/(.+)$/.exec(h);
     if (m) {

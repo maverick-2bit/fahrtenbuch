@@ -2,7 +2,7 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-src https://belege.smarte.events; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
 
 # Permissions-Policy je Bereich: Doppelt gesetzte Kopfzeilen würde Cloudflare mit Komma verbinden,
 # dann gälte das strengere „geolocation=()“ auch für die Web-App.
@@ -19,5 +19,5 @@
 # iPhone-Web-App: braucht den Standort; no-cache, damit Updates sofort ankommen (der Service Worker
 # lädt ohnehin zuerst aus dem Netz und nur ohne Netz aus dem Zwischenspeicher)
 /app/*
-  Permissions-Policy: camera=(), microphone=(), geolocation=(self)
+  Permissions-Policy: camera=("https://belege.smarte.events"), microphone=(), geolocation=(self)
   Cache-Control: no-cache

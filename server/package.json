@@ -1,7 +1,7 @@
 {
   "name": "fahrtenbuch-server",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.1",
   "description": "Fahrtenbuch Online: Datensicherung, Verwaltungsseite, Berichte und iPhone-Web-App (Cloudflare Worker + D1)",
   "type": "module",
   "scripts": {
