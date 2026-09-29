@@ -1,7 +1,7 @@
 // Service Worker der Web-App: Die App öffnet auch ohne Netz (Tiefgarage, Funkloch).
 // Immer zuerst aus dem Netz – so kommen Updates sofort an; nur ohne Netz aus dem Zwischenspeicher.
 // Die Schnittstelle (/api/) läuft nie über den Service Worker.
-const SPEICHER = "fahrtenbuch-app-0.7.1";
+const SPEICHER = "fahrtenbuch-app-0.7.2";
 // Ohne „index.html“: Cloudflare leitet es auf „./“ um, und umgeleitete Antworten darf ein Service
 // Worker nicht für Seitenaufrufe verwenden
 const DATEIEN = [

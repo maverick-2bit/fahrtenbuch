@@ -4,7 +4,7 @@ import * as db from "./daten.js";
 import { ausB64, b64, huelleErstellen, huelleOeffnen, MIN_PIN, zufall } from "./krypto.js";
 import { anfrage, geraetBeschreiben, vorbereiten } from "./syncformat.js";
 
-export const VERSION = "0.7.1";
+export const VERSION = "0.7.2";
 const JE_ANFRAGE = 100;
 
 /** Als Web-App vom Home-Bildschirm gestartet (nicht im Safari-Tab)? */

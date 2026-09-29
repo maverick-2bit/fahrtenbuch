@@ -156,7 +156,11 @@ function belegeZeigen() {
       el("iframe", { src: BELEGE, title: "Belege", allow: "camera; clipboard-write" }),
     );
     document.body.append($belege);
-    window.addEventListener("resize", () => !$belege.hidden && belegeLage());
+    // Kopf und Leiste ändern ihre Höhe (Sicherungsstatus, Drehen, Schriftgröße) – der Rahmen folgt
+    const folgen = () => !$belege.hidden && belegeLage();
+    new ResizeObserver(folgen).observe(document.querySelector(".kopf"));
+    new ResizeObserver(folgen).observe(document.getElementById("tabs"));
+    window.addEventListener("resize", folgen);
   }
   $inhalt.hidden = true;
   $belege.hidden = false;

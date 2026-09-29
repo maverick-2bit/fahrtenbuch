@@ -2,6 +2,12 @@
 
 Alle Änderungen am Fahrtenbuch (Android-App und Server). Versionen nach SemVer; App und Server tragen dieselbe Nummer.
 
+## [0.7.2] – 2026-09-29
+
+### Behoben
+- iPhone-Web-App: Der Rahmen der Belege folgt Größenänderungen von Kopf und unterer Leiste (lag sonst um ein paar
+  Pixel unter dem Kopf).
+
 ## [0.7.1] – 2026-09-29
 
 ### Neu
