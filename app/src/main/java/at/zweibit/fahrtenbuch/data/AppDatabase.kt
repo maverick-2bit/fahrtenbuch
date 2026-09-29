@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Kategorie::class, Fahrt::class, Trackpunkt::class, ProtokollEintrag::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -51,6 +51,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v0.6: Nachtrag nach korrigiertem Start (fehlende Kilometer, vorverlegte Abfahrt). */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE fahrten ADD COLUMN nachtragMeter REAL NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE fahrten ADD COLUMN nachtragMs INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         // Exakt wie von Room erzeugt (siehe schemas/…/3.json) – sonst bricht Room beim Öffnen ab
         private const val SQL_PROTOKOLL =
             "CREATE TABLE IF NOT EXISTS `protokoll` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
@@ -59,7 +67,7 @@ abstract class AppDatabase : RoomDatabase() {
 
         fun erstellen(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "fahrtenbuch.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         // Startkategorien; können in den Einstellungen geändert oder gelöscht werden.

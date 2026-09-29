@@ -140,8 +140,8 @@ fun AppOberflaeche(
             kategorien = kategorien,
             orte = orte,
             adressenNachladen = haupt::adressenNachladen,
-            speichern = { katId, notiz, start, ziel, zwischen ->
-                haupt.kategorisieren(f.id, katId, notiz, start, ziel, zwischen)
+            speichern = { katId, notiz, start, ziel, zwischen, startKorrigiert ->
+                haupt.kategorisieren(f.id, katId, notiz, start, ziel, zwischen, startKorrigiert)
             },
             verwerfen = { haupt.verwerfen(f.id) },
             spaeter = { haupt.spaeter(f.id) },

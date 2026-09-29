@@ -213,7 +213,8 @@ button { font: inherit; color: inherit; }
 .laufend.pause { background: color-mix(in srgb, var(--pause) 16%, var(--flaeche)); }
 .laufend .titel { font-weight: 650; }
 .laufend .km { font-size: 46px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.tempo { font-weight: 600; }
+.tempo { font-size: 22px; font-weight: 600; line-height: 1.1; }
+.tempo .zahl { font-size: 64px; font-weight: 800; font-variant-numeric: tabular-nums; }
 
 .adresszeile { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--linie); padding-top: 6px; }
 .adresszeile > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }

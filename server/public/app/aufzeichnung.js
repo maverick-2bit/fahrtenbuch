@@ -7,8 +7,17 @@
 // dafür rechnet der Server nach, und die Ankunftszeit wird geschätzt (strecke.js).
 import * as db from "./daten.js";
 import { alsAdresse, erkennen, istPausiert, koordinatenText, zwischenzieleLesen, zwischenzieleSchreiben } from "./orte.js";
-import { adresseErmitteln, routeErmitteln } from "./sicherung.js";
-import { ankunftSchaetzen, distanzMeter, LUECKE_M, StillstandErkennung, StreckenRechner } from "./strecke.js";
+import { adresseErmitteln, koordinatenSuchen, routeErmitteln, verbindung } from "./sicherung.js";
+import {
+  ankunftSchaetzen,
+  distanzMeter,
+  LUECKE_M,
+  nachtragAnwenden,
+  nachtragAusRoute,
+  nachtragVorpruefen,
+  StillstandErkennung,
+  StreckenRechner,
+} from "./strecke.js";
 
 /** Fahrten unter dieser Strecke werden beim automatischen Ende verworfen. */
 const MIN_FAHRT_M = 100;
@@ -29,6 +38,8 @@ let letzterFix = 0;
 let kmh = null;
 let gpsMeldung = "";
 let beendet = null;
+/** Kilometer-Nachtrag nach korrigiertem Start: {text, fehler} – Berechnung läuft oder Grund, warum er fehlt. */
+let nachtragStand = null;
 
 function leererZustand() {
   return { luecke: null, verborgenAb: null, letzteLage: null, nachgerechnetM: 0 };
@@ -56,6 +67,7 @@ export function stand() {
     wachMoeglich: "wakeLock" in navigator,
     pausiert: istPausiert(fahrt),
     nachgerechnetM: zustand.nachgerechnetM ?? 0,
+    nachtrag: nachtragStand,
   };
 }
 
@@ -237,6 +249,7 @@ export function starten(ort = null) {
     zustand = leererZustand();
     sichtbarSeit = jetzt;
     kmh = null;
+    nachtragStand = null;
     await zustandSpeichern();
     beobachten();
     wachHalten();
@@ -373,6 +386,7 @@ async function beendenIntern(automatisch) {
   zustand = leererZustand();
   kmh = null;
   gpsMeldung = "";
+  nachtragStand = null;
   await db.wertSetzen("aufzeichnung", null);
   beendet = ergebnis;
   melden();
@@ -381,10 +395,64 @@ async function beendenIntern(automatisch) {
 
 // ------------------------------------------------------------------ Während der Fahrt ändern
 
+/**
+ * Nachtrag vom korrigierten Start bis zum Beginn der Aufzeichnung der Fahrt f: gespeicherter Ort oder
+ * Adresssuche in der Umgebung, dann Straßenkilometer und Fahrzeit über den Server – wie
+ * StartKorrektur.berechnen in der Android-App.
+ * @returns {Promise<{nachtrag: {meter: number, ms: number}} | {fehler: string}>}
+ */
+export async function nachtragBerechnen(f, adresse) {
+  const lat = f.startLat;
+  const lon = f.startLon;
+  if (typeof lat !== "number" || typeof lon !== "number") return { fehler: "Der Beginn der Aufzeichnung ist noch nicht bekannt (noch kein GPS-Signal)." };
+  if (!(await verbindung())?.code) return { fehler: "Dafür muss die Web-App mit der Online-Sicherung verbunden sein (Einstellungen)." };
+  const ohneNetz = () => navigator.onLine === false;
+  const text = adresse.trim();
+  const orte = await db.wert("orte", []);
+  const ort = orte.find((o) => typeof o.lat === "number" && typeof o.lon === "number" && alsAdresse(o).toLowerCase() === text.toLowerCase());
+  const ziel = ort ? { lat: ort.lat, lon: ort.lon } : await koordinatenSuchen(text, { lat, lon });
+  if (!ziel) return { fehler: ohneNetz() ? "Keine Internetverbindung." : "Adresse nicht gefunden – bitte mit Postleitzahl und Ort eingeben." };
+  const abstand = distanzMeter(ziel.lat, ziel.lon, lat, lon);
+  const vorab = nachtragVorpruefen(abstand);
+  if (vorab) return vorab;
+  const r = await routeErmitteln(ziel, { lat, lon });
+  if (!r) return { fehler: ohneNetz() ? "Keine Internetverbindung." : "Keine Straßenverbindung gefunden." };
+  return { nachtrag: nachtragAusRoute(r, abstand) };
+}
+
+/**
+ * Startadresse der laufenden Fahrt ändern, z. B. wenn der Start zu spät gedrückt wurde: Die fehlenden
+ * Kilometer und die Abfahrt werden nachgerechnet, ein früherer Nachtrag wird ersetzt.
+ */
 export function startAdresseAendern(text) {
+  const adresse = text.trim();
   return nacheinander(async () => {
-    if (fahrt) await aendern(() => ({ startAdresse: text.trim() }));
+    if (!fahrt) return;
+    await aendern(() => ({ startAdresse: adresse }));
+    const f = fahrt;
+    nachtragStand = { text: "Kilometer ab dem neuen Start werden berechnet …", fehler: false };
     melden();
+    // Außerhalb der Warteschlange rechnen – die Aufzeichnung läuft währenddessen weiter
+    nachtragBerechnen(f, adresse).then((e) =>
+      nacheinander(async () => {
+        if (fahrt?.uuid !== f.uuid) {
+          // Während der Berechnung beendet: der noch nicht zugeordneten Fahrt nachtragen
+          if (e.nachtrag) await db.unfertigAendern(f.uuid, (a) => (a.startAdresse === adresse ? nachtragAnwenden(a, e.nachtrag) : {}), ["offen"]);
+          return;
+        }
+        // Inzwischen erneut korrigiert: Dann zählt die neuere Korrektur
+        if (fahrt.startAdresse !== adresse) return;
+        if (e.fehler) {
+          nachtragStand = { text: `Kilometer nicht ergänzt: ${e.fehler}`, fehler: true };
+        } else {
+          rechner.meter = Math.max(0, rechner.meter + e.nachtrag.meter - (fahrt.nachtragMeter ?? 0));
+          await aendern((a) => ({ ...nachtragAnwenden(a, e.nachtrag), distanzMeter: rechner.meter }));
+          await zustandSpeichern();
+          nachtragStand = null;
+        }
+        melden();
+      }),
+    );
   });
 }
 

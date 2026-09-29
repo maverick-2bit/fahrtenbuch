@@ -84,6 +84,11 @@ class StreckenRechner(
         letzter = p
         return true
     }
+
+    /** Nicht aufgezeichnete Strecke (z. B. vor einem verspäteten Start) dazurechnen oder wieder abziehen. */
+    fun nachtragen(deltaMeter: Double) {
+        meter = (meter + deltaMeter).coerceAtLeast(0.0)
+    }
 }
 
 /**

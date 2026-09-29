@@ -103,6 +103,27 @@ describe("Adressen für die Web-App", () => {
     expect(await r2.json()).toEqual({ lat: null, lon: null });
   });
 
+  it("sucht einen korrigierten Start nur in der Umgebung der Aufzeichnung", async () => {
+    const d = dienst([{ lat: "47.3817", lon: "15.0945" }]);
+    const body = { adresse: "Hauptplatz 1", nahe: { lat: 47.3812, lon: 15.0921 } };
+    const r = await koordinaten(anfrage("/api/v1/koordinaten", body), env, d.holen);
+    expect(await r.json()).toEqual({ lat: 47.3817, lon: 15.0945 });
+    const url = new URL(d.aufrufe[0].url);
+    expect(url.searchParams.get("bounded")).toBe("1");
+    // Rund 100 km um den gerundeten Punkt 47,4 / 15,1: Länge links, Breite oben, Länge rechts, Breite unten
+    const [links, oben, rechts, unten] = url.searchParams.get("viewbox")!.split(",").map(Number);
+    expect([oben, unten]).toEqual([48.3, 46.5]);
+    expect(links).toBeCloseTo(15.1 - 0.9 / Math.cos((47.4 * Math.PI) / 180), 2);
+    expect(rechts).toBeCloseTo(15.1 + 0.9 / Math.cos((47.4 * Math.PI) / 180), 2);
+
+    // Dieselbe Adresse ohne Umgebung ist eine eigene Suche (anderer Zwischenspeicher)
+    const ohne = dienst([{ lat: "48.2", lon: "16.37" }]);
+    const r2 = await koordinaten(anfrage("/api/v1/koordinaten", { adresse: "Hauptplatz 1" }), env, ohne.holen);
+    expect(await r2.json()).toEqual({ lat: 48.2, lon: 16.37 });
+    expect(ohne.aufrufe[0].url).not.toContain("viewbox");
+    expect(await fehlerStatus(koordinaten(anfrage("/api/v1/koordinaten", { adresse: "Hauptplatz 1", nahe: { lat: 95, lon: 1 } }), env, d.holen))).toBe(400);
+  });
+
   it("berechnet Straßenkilometer für eine Aufzeichnungslücke", async () => {
     const d = dienst({ code: "Ok", routes: [{ distance: 12_345.6, duration: 700.4 }] });
     const r = await route(anfrage("/api/v1/route", { von: { lat: 47.38, lon: 15.09 }, nach: { lat: 47.07, lon: 15.44 } }), env, d.holen);

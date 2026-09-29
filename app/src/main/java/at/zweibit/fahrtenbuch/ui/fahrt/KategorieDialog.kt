@@ -45,11 +45,15 @@ fun KategorieDialog(
     kategorien: List<Kategorie>,
     orte: List<Ort>,
     adressenNachladen: suspend (Fahrt) -> Pair<String?, String?>,
-    speichern: (kategorieId: Long, notiz: String, start: String, ziel: String, zwischen: List<Zwischenziel>) -> Unit,
+    speichern: (
+        kategorieId: Long, notiz: String, start: String, ziel: String, zwischen: List<Zwischenziel>, startKorrigiert: Boolean,
+    ) -> Unit,
     verwerfen: () -> Unit,
     spaeter: () -> Unit,
 ) {
     var start by remember(fahrt.id) { mutableStateOf(fahrt.startAdresse) }
+    // Start ohne Zutun des Nutzers (samt nachgeladener GPS-Adresse) – weicht der Start davon ab, wird nachgerechnet
+    var startVorgabe by remember(fahrt.id) { mutableStateOf(fahrt.startAdresse) }
     var ziel by remember(fahrt.id) { mutableStateOf(fahrt.endeAdresse) }
     var notiz by remember(fahrt.id) { mutableStateOf(fahrt.notiz) }
     val zwischen = remember(fahrt.id) { fahrt.zwischenzieleListe.toMutableStateList() }
@@ -58,7 +62,10 @@ fun KategorieDialog(
     // Fehlende Adressen (z. B. kein Netz am Ziel) nachträglich ermitteln, sofern nicht schon geändert.
     LaunchedEffect(fahrt.id) {
         val (s, z) = adressenNachladen(fahrt)
-        if (s != null && start == fahrt.startAdresse) start = s
+        if (s != null && start == fahrt.startAdresse) {
+            start = s
+            startVorgabe = s
+        }
         if (z != null && ziel == fahrt.endeAdresse) ziel = z
     }
 
@@ -72,6 +79,8 @@ fun KategorieDialog(
         )
         return
     }
+
+    val startKorrigiert = start.isNotBlank() && start.trim() != startVorgabe.trim()
 
     AlertDialog(
         onDismissRequest = spaeter,
@@ -87,7 +96,19 @@ fun KategorieDialog(
                     "${Format.datumKurz(fahrt.startZeit)} · ${Format.uhrzeit(fahrt.startZeit)}$bis · ${Format.km(fahrt.distanzMeter)}",
                     fontWeight = FontWeight.SemiBold,
                 )
+                if (fahrt.nachtragMeter > 0) {
+                    Text(
+                        "Inkl. ${Format.km(fahrt.nachtragMeter)} vom korrigierten Start (über die Straße berechnet).",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
                 AdressFeld(start, { start = it }, "Von", orte)
+                if (startKorrigiert) {
+                    Text(
+                        "Neuer Start: Beim Speichern rechnet die App die Kilometer ab dort nach und schätzt die Abfahrt.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
                 zwischen.forEachIndexed { i, z ->
                     AdressFeld(z.adresse, { zwischen[i] = z.copy(adresse = it) }, "Über (Zwischenziel ${i + 1})", orte)
                 }
@@ -102,7 +123,7 @@ fun KategorieDialog(
                 kategorien.forEach { k ->
                     val farbe = kategorieFarbe(k.farbe)
                     Button(
-                        onClick = { speichern(k.id, notiz, start, ziel, zwischen.toList()) },
+                        onClick = { speichern(k.id, notiz, start, ziel, zwischen.toList(), startKorrigiert) },
                         colors = ButtonDefaults.buttonColors(containerColor = farbe, contentColor = schriftAuf(farbe)),
                         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                     ) { Text(k.name, fontSize = 18.sp) }
