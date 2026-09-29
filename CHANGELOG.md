@@ -2,6 +2,13 @@
 
 Alle Änderungen am Fahrtenbuch (Android-App und Server). Versionen nach SemVer; App und Server tragen dieselbe Nummer.
 
+## [0.7.1] – 2026-09-29
+
+### Neu
+- iPhone-Web-App: Menüpunkt **Belege** wie in der Android-App – die Belegablage (belege.smarte.events, eigener
+  Login) eingebettet; bleibt beim Wechsel der Menüpunkte geladen, eine laufende Fahrt zeichnet weiter auf.
+- Server: Einbetten nur von belege.smarte.events erlaubt (`frame-src`), Kamera für die Belege freigegeben.
+
 ## [0.7.0] – 2026-09-29
 
 ### Neu
