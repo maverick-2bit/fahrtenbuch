@@ -13,7 +13,11 @@ data class LiveZustand(
     val wartetAuf: String? = null,
     /** Mit diesem Auto verbunden, während eine Fahrt läuft – Stillstand beendet sie dann nicht. */
     val auto: String? = null,
+    /** Kilometer-Nachtrag nach korrigiertem Start: Berechnung läuft oder Grund, warum er fehlt. */
+    val nachtrag: NachtragStand? = null,
 )
+
+data class NachtragStand(val text: String, val fehler: Boolean = false)
 
 object LiveStatus {
     val zustand = MutableStateFlow(LiveZustand())

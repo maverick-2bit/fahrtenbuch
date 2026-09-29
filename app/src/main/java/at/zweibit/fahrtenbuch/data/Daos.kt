@@ -101,6 +101,12 @@ interface FahrtDao {
     @Query("UPDATE fahrten SET distanzMeter = :meter WHERE id = :id")
     suspend fun distanzSetzen(id: Long, meter: Double)
 
+    @Query(
+        "UPDATE fahrten SET distanzMeter = :meter, startZeit = :startZeit, nachtragMeter = :nachtragMeter, " +
+            "nachtragMs = :nachtragMs WHERE id = :id"
+    )
+    suspend fun nachtragSetzen(id: Long, meter: Double, startZeit: Long, nachtragMeter: Double, nachtragMs: Long)
+
     @Query("UPDATE fahrten SET startLat = :lat, startLon = :lon WHERE id = :id")
     suspend fun startPositionSetzen(id: Long, lat: Double, lon: Double)
 

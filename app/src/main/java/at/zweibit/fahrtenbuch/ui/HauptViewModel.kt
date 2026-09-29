@@ -1,6 +1,7 @@
 package at.zweibit.fahrtenbuch.ui
 
 import android.app.Application
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import at.zweibit.fahrtenbuch.FahrtenbuchApp
@@ -14,6 +15,8 @@ import at.zweibit.fahrtenbuch.data.Zwischenziel
 import at.zweibit.fahrtenbuch.data.zwischenzieleListe
 import at.zweibit.fahrtenbuch.tracking.Adressen
 import at.zweibit.fahrtenbuch.tracking.Benachrichtigungen
+import at.zweibit.fahrtenbuch.tracking.NachtragErgebnis
+import at.zweibit.fahrtenbuch.tracking.StartKorrektur
 import at.zweibit.fahrtenbuch.tracking.TrackingService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -49,7 +52,11 @@ class HauptViewModel(application: Application) : AndroidViewModel(application) {
     /** Fahrt, die explizit (z. B. aus der Liste oder Benachrichtigung) zugeordnet werden soll. */
     private val angefordert = MutableStateFlow(0L)
 
-    val dialogFahrt: StateFlow<Fahrt?> = combine(offene, spaeter, angefordert) { liste, weg, id ->
+    /** Fahrten, die gerade gespeichert werden (z. B. während der Nachtrag nach korrigiertem Start berechnet wird). */
+    private val inArbeit = MutableStateFlow<Set<Long>>(emptySet())
+
+    val dialogFahrt: StateFlow<Fahrt?> = combine(offene, spaeter, angefordert, inArbeit) { alle, weg, id, arbeit ->
+        val liste = alle.filter { it.id !in arbeit }
         liste.firstOrNull { it.id == id } ?: liste.firstOrNull { it.id !in weg }
     }.halten(null)
 
@@ -74,9 +81,15 @@ class HauptViewModel(application: Application) : AndroidViewModel(application) {
     fun pausieren() = TrackingService.pausieren(app)
     fun weiterfahren() = TrackingService.weiterfahren(app)
 
-    /** Startadresse der laufenden Fahrt ändern, z. B. wenn der Start zu spät gedrückt wurde. */
+    /**
+     * Startadresse der laufenden Fahrt ändern, z. B. wenn der Start zu spät gedrückt wurde. Die fehlenden
+     * Kilometer und die Abfahrt rechnet der Dienst nach – das geht auch weiter, wenn die App geschlossen wird.
+     */
     fun startAdresseAendern(fahrtId: Long, adresse: String) {
-        viewModelScope.launch { repo.startAdresseSetzen(fahrtId, adresse.trim()) }
+        viewModelScope.launch {
+            repo.startAdresseSetzen(fahrtId, adresse.trim())
+            TrackingService.startKorrigieren(app, adresse.trim())
+        }
     }
 
     /** Adresse eines Zwischenziels der laufenden Fahrt ändern. */
@@ -100,6 +113,7 @@ class HauptViewModel(application: Application) : AndroidViewModel(application) {
         if (angefordert.value == id) angefordert.value = 0L
     }
 
+    /** @param startKorrigiert Startadresse im Dialog geändert: fehlende Kilometer und Abfahrt vorher nachtragen */
     fun kategorisieren(
         fahrtId: Long,
         kategorieId: Long,
@@ -107,11 +121,28 @@ class HauptViewModel(application: Application) : AndroidViewModel(application) {
         start: String,
         ziel: String,
         zwischen: List<Zwischenziel>,
+        startKorrigiert: Boolean = false,
     ) {
+        inArbeit.value = inArbeit.value + fahrtId
         viewModelScope.launch {
-            repo.kategorisieren(fahrtId, kategorieId, notiz, start, ziel, zwischen)
-            Benachrichtigungen.beendetEntfernen(app, fahrtId)
-            if (angefordert.value == fahrtId) angefordert.value = 0L
+            try {
+                if (startKorrigiert) startNachtragen(fahrtId, start)
+                repo.kategorisieren(fahrtId, kategorieId, notiz, start, ziel, zwischen)
+                Benachrichtigungen.beendetEntfernen(app, fahrtId)
+                if (angefordert.value == fahrtId) angefordert.value = 0L
+            } finally {
+                inArbeit.value = inArbeit.value - fahrtId
+            }
+        }
+    }
+
+    /** Im Dialog am Ziel korrigierter Start: Kilometer und Abfahrt nachtragen, bevor die Fahrt gespeichert wird. */
+    private suspend fun startNachtragen(fahrtId: Long, start: String) {
+        val f = repo.fahrt(fahrtId)?.takeIf { it.status == FahrtStatus.OFFEN } ?: return
+        when (val e = StartKorrektur.berechnen(app, f, start)) {
+            is NachtragErgebnis.Ok -> repo.nachtragSetzen(StartKorrektur.anwenden(f, e.nachtrag))
+            is NachtragErgebnis.Fehler ->
+                Toast.makeText(app, "Kilometer ab dem neuen Start nicht ergänzt: ${e.text}", Toast.LENGTH_LONG).show()
         }
     }
 

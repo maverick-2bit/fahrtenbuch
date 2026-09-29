@@ -21,7 +21,7 @@ sealed interface SyncErgebnis {
     data class Fehler(val text: String) : SyncErgebnis
 }
 
-private class HttpAntwort(val code: Int, val text: String)
+internal class HttpAntwort(val code: Int, val text: String)
 
 /** Überträgt das Änderungsprotokoll an die Online-Sicherung. */
 object Sicherung {
@@ -31,10 +31,15 @@ object Sicherung {
 
     val geraet: String get() = "Android ${Build.VERSION.RELEASE} · ${Build.MANUFACTURER} ${Build.MODEL}"
 
-    private suspend fun anfrage(url: String, code: String, body: String?): HttpAntwort = withContext(Dispatchers.IO) {
+    internal suspend fun anfrage(
+        url: String,
+        code: String,
+        body: String?,
+        timeoutMs: Int = 60_000,
+    ): HttpAntwort = withContext(Dispatchers.IO) {
         val con = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000
-            readTimeout = 60_000
+            connectTimeout = minOf(15_000, timeoutMs)
+            readTimeout = timeoutMs
             requestMethod = if (body == null) "GET" else "POST"
             setRequestProperty("Authorization", "Bearer $code")
             setRequestProperty("User-Agent", "Fahrtenbuch-App/${BuildConfig.VERSION_NAME}")
@@ -53,7 +58,7 @@ object Sicherung {
         }
     }
 
-    private fun fehlertext(a: HttpAntwort): String =
+    internal fun fehlertext(a: HttpAntwort): String =
         runCatching { JSONObject(a.text).optString("fehler") }.getOrNull()?.takeIf { it.isNotBlank() }
             ?: "Server meldet Fehler ${a.code}"
 

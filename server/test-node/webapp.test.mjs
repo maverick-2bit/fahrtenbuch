@@ -7,7 +7,8 @@ import { describe, test } from "node:test";
 // Zeitzone vor dem Laden der Module setzen: die Datumsformate merken sie sich beim Anlegen
 process.env.TZ = "Europe/Vienna";
 const F = await import("../public/app/format.js");
-const { StreckenRechner, StillstandErkennung, distanzMeter, ankunftSchaetzen } = await import("../public/app/strecke.js");
+const { StreckenRechner, StillstandErkennung, distanzMeter, ankunftSchaetzen, nachtragAnwenden, nachtragVorpruefen, nachtragAusRoute, KEIN_NACHTRAG } =
+  await import("../public/app/strecke.js");
 const O = await import("../public/app/orte.js");
 const B = await import("../public/app/bericht.js");
 const K = await import("../public/app/krypto.js");
@@ -108,6 +109,41 @@ describe("Strecke", () => {
       const luecke = { von: 10 * min, bis: 70 * min, sekunden: 900 };
       assert.equal(ankunftSchaetzen({ letzteBewegung: 80 * min, luecke }, 82 * min, false), 82 * min);
     });
+  });
+});
+
+describe("Korrigierter Start (wie StartKorrekturTest der Android-App)", () => {
+  const start = 1_759_046_400_000;
+  const fahrt = { startZeit: start, distanzMeter: 12_000, startLat: 47.38, startLon: 15.09 };
+
+  test("ergänzt Kilometer und verlegt die Abfahrt vor", () => {
+    assert.deepEqual(nachtragAnwenden(fahrt, { meter: 4_200, ms: 420_000 }), {
+      distanzMeter: 16_200,
+      startZeit: start - 420_000,
+      nachtragMeter: 4_200,
+      nachtragMs: 420_000,
+    });
+  });
+
+  test("erneute Korrektur ersetzt den Nachtrag", () => {
+    const erste = { ...fahrt, ...nachtragAnwenden(fahrt, { meter: 4_200, ms: 420_000 }) };
+    const zweite = { ...erste, ...nachtragAnwenden(erste, { meter: 1_500, ms: 180_000 }) };
+    assert.equal(zweite.distanzMeter, 13_500);
+    assert.equal(zweite.startZeit, start - 180_000);
+    // Zurück auf den ursprünglichen Start: alles wie aufgezeichnet
+    const zurueck = { ...zweite, ...nachtragAnwenden(zweite, KEIN_NACHTRAG) };
+    assert.deepEqual([zurueck.distanzMeter, zurueck.startZeit, zurueck.nachtragMeter], [12_000, start, 0]);
+  });
+
+  test("Luftlinie entscheidet, ob gerechnet wird", () => {
+    assert.deepEqual(nachtragVorpruefen(120), { nachtrag: KEIN_NACHTRAG });
+    assert.equal(nachtragVorpruefen(3_000), null);
+    assert.match(nachtragVorpruefen(180_000).fehler, /180,0 km vom Beginn/);
+  });
+
+  test("über die Straße nie kürzer als die Luftlinie", () => {
+    assert.deepEqual(nachtragAusRoute({ meter: 4_200, sekunden: 420 }, 3_100), { meter: 4_200, ms: 420_000 });
+    assert.deepEqual(nachtragAusRoute({ meter: 2_900, sekunden: 60 }, 3_100), { meter: 3_100, ms: 60_000 });
   });
 });
 

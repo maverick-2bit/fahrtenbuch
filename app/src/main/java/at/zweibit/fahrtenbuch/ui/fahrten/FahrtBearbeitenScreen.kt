@@ -145,6 +145,9 @@ fun FahrtBearbeitenScreen(fahrtId: Long, zurueck: () -> Unit, vm: BearbeitenView
         val basis = original ?: Fahrt(startZeit = startMillis)
         // Unveränderte km-Anzeige soll die exakte GPS-Strecke nicht verfälschen
         val meter = if (original != null && Format.kmWert(basis.distanzMeter) == km) basis.distanzMeter else km!! * 1000.0
+        // Von Hand geänderte Kilometer oder Abfahrt ersetzen einen berechneten Nachtrag (korrigierter Start)
+        val kmGleich = meter == basis.distanzMeter
+        val abfahrtGleich = startMillis / 60_000 == basis.startZeit / 60_000
         vm.speichern(
             basis.copy(
                 startZeit = startMillis,
@@ -155,6 +158,8 @@ fun FahrtBearbeitenScreen(fahrtId: Long, zurueck: () -> Unit, vm: BearbeitenView
                     zwischen.filter { it.adresse.isNotBlank() }.map { it.copy(adresse = it.adresse.trim()) }
                 ),
                 distanzMeter = meter,
+                nachtragMeter = if (kmGleich) basis.nachtragMeter else 0.0,
+                nachtragMs = if (abfahrtGleich) basis.nachtragMs else 0,
                 kategorieId = kategorieId,
                 notiz = notiz.trim(),
                 status = FahrtStatus.FERTIG,

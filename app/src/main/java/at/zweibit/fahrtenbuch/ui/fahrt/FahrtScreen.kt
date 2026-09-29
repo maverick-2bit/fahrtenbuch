@@ -44,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -211,8 +212,8 @@ fun FahrtScreen(vm: HauptViewModel, zuordnen: (Long) -> Unit) {
                     label = "Start",
                     anfang = f.startAdresse,
                     orte = orte,
-                    hinweis = "Zum Beispiel, wenn du den Start zu spät gedrückt hast. Kilometer und Abfahrtszeit " +
-                        "kannst du nach der Fahrt unter „Fahrten“ korrigieren.",
+                    hinweis = "Zum Beispiel, wenn du den Start zu spät gedrückt hast: Die App rechnet die Kilometer vom " +
+                        "richtigen Start bis zum Beginn der Aufzeichnung über die Straße nach und schätzt die Abfahrtszeit.",
                     speichern = {
                         vm.startAdresseAendern(f.id, it)
                         startAendern = false
@@ -242,8 +243,33 @@ fun FahrtScreen(vm: HauptViewModel, zuordnen: (Long) -> Unit) {
                     Text(if (pause) "Fahrt pausiert" else "Fahrt läuft", style = MaterialTheme.typography.titleMedium)
                     Text(Format.km(f.distanzMeter), fontSize = 44.sp, fontWeight = FontWeight.Bold)
                     Text("Dauer: ${Format.dauer(jetzt - f.startZeit)} · seit ${Format.uhrzeit(f.startZeit)}")
-                    if (!pause) live.kmh?.let { Text("Tempo: $it km/h", fontWeight = FontWeight.Medium) }
+                    // Groß, damit die Geschwindigkeit während der Fahrt mit einem Blick lesbar ist
+                    if (!pause) live.kmh?.let { kmh ->
+                        Row(Modifier.semantics(mergeDescendants = true) {}) {
+                            Text(
+                                "$kmh",
+                                style = MaterialTheme.typography.displayLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.alignByBaseline(),
+                            )
+                            Text(" km/h", style = MaterialTheme.typography.titleLarge, modifier = Modifier.alignByBaseline())
+                        }
+                    }
                     AdressZeile("Start", f.startAdresse.ifBlank { "Standort wird ermittelt …" }) { startAendern = true }
+                    if (f.nachtragMeter > 0) {
+                        val frueher = if (f.nachtragMs >= 60_000) ", Abfahrt ca. ${Format.dauer(f.nachtragMs)} früher" else ""
+                        Text(
+                            "Inkl. ${Format.km(f.nachtragMeter)} vom korrigierten Start$frueher (geschätzt).",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    live.nachtrag?.let { n ->
+                        Text(
+                            n.text,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (n.fehler) MaterialTheme.colorScheme.error else Color.Unspecified,
+                        )
+                    }
                     zwischen.forEachIndexed { i, z ->
                         val aktuell = pause && i == zwischen.lastIndex
                         val zeit = z.an?.let { " · " + Format.uhrzeit(it) + (z.ab?.let { ab -> "–" + Format.uhrzeit(ab) } ?: "") } ?: ""

@@ -59,8 +59,11 @@ class MigrationTest {
         for (i in 0 until setup.length()) db.execSQL(setup.getString(i))
 
         // Daten wie am Handy: Kategorien, abgeschlossene Fahrt mit Trackpunkt, laufende Fahrt
-        db.execSQL("INSERT INTO kategorien (id, name, farbe, sortierung, aktiv) VALUES (1, 'Dienstlich', 4280191205, 1, 1)")
-        db.execSQL("INSERT INTO kategorien (id, name, farbe, sortierung, aktiv) VALUES (2, ' Privat ', 4282622023, 2, 1)")
+        // Ab Version 4 steht in der Datenbank selbst, welche Kategorie privat ist
+        val privatSpalte = if (version >= 4) ", privat" else ""
+        val (privat1, privat2) = if (version >= 4) ", 0" to ", 1" else "" to ""
+        db.execSQL("INSERT INTO kategorien (id, name, farbe, sortierung, aktiv$privatSpalte) VALUES (1, 'Dienstlich', 4280191205, 1, 1$privat1)")
+        db.execSQL("INSERT INTO kategorien (id, name, farbe, sortierung, aktiv$privatSpalte) VALUES (2, ' Privat ', 4282622023, 2, 1$privat2)")
         // Ab Version 3 gibt es die eindeutige Kennung – sie muss beim Update erhalten bleiben
         val uuidSpalte = if (version >= 3) "uuid, " else ""
         val uuid1 = if (version >= 3) "'$UUID_1', " else ""
@@ -84,14 +87,14 @@ class MigrationTest {
     }
 
     private fun oeffnen() = Room.databaseBuilder(context, AppDatabase::class.java, name)
-        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
+        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5)
         .allowMainThreadQueries()
         .build()
 
     private companion object {
         const val UUID_1 = "11111111-2222-4333-8444-555555555555"
         const val UUID_2 = "66666666-7777-4888-9999-000000000000"
-        const val AKTUELL = 4
+        const val AKTUELL = 5
     }
 
     private val uuidFormat = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
@@ -155,6 +158,14 @@ class MigrationTest {
         val kategorien = db.kategorieDao().alleEinmal().associate { it.id to it.privat }
         assertEquals(mapOf(1L to false, 2L to true), kategorien)
 
+        // v5: bestehende Fahrten ohne Nachtrag; der Nachtrag nach korrigiertem Start lässt sich setzen
+        assertEquals(0.0, f.nachtragMeter, 0.0)
+        assertEquals(0L, f.nachtragMs)
+        db.fahrtDao().nachtragSetzen(2, 5_400.0, 1759059580000, 4_200.0, 420_000)
+        val laufend = db.fahrtDao().holen(2)!!
+        assertEquals(listOf(5_400.0, 4_200.0), listOf(laufend.distanzMeter, laufend.nachtragMeter))
+        assertEquals(listOf(1759059580000, 420_000L), listOf(laufend.startZeit, laufend.nachtragMs))
+
         // Zwischenziele (v2) und Protokoll (v3) sind nutzbar
         db.fahrtDao().zwischenzieleSetzen(2, """[{"adresse":"Kunde B","an":1759061000000}]""")
         assertEquals(listOf(Zwischenziel("Kunde B", an = 1759061000000)), db.fahrtDao().holen(2)!!.zwischenzieleListe)
@@ -180,6 +191,9 @@ class MigrationTest {
 
     @Test
     fun updateVonVersion3BehaeltAlleDaten() = updateVon(3)
+
+    @Test
+    fun updateVonVersion4BehaeltAlleDaten() = updateVon(4)
 
     @Test
     fun neueInstallationLegtStartkategorienAn() = runBlocking {

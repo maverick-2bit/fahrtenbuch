@@ -67,6 +67,7 @@ class TrackingService : LifecycleService() {
         const val ACTION_BEREIT = "at.zweibit.fahrtenbuch.BEREIT"
         const val ACTION_BT_GETRENNT = "at.zweibit.fahrtenbuch.BT_GETRENNT"
         const val ACTION_NICHT_AUFZEICHNEN = "at.zweibit.fahrtenbuch.NICHT_AUFZEICHNEN"
+        const val ACTION_START_KORRIGIEREN = "at.zweibit.fahrtenbuch.START_KORRIGIEREN"
         private const val EXTRA_START_ADRESSE = "start_adresse"
         private const val EXTRA_AUTO_ADRESSE = "auto_adresse"
         private const val EXTRA_AUTO_NAME = "auto_name"
@@ -121,6 +122,16 @@ class TrackingService : LifecycleService() {
         fun weiterfahren(context: Context) {
             context.startService(Intent(context, TrackingService::class.java).setAction(ACTION_WEITER))
         }
+
+        /** Startadresse der laufenden Fahrt wurde korrigiert: fehlende Kilometer und Abfahrt nachtragen. */
+        fun startKorrigieren(context: Context, adresse: String) {
+            runCatching {
+                context.startService(
+                    Intent(context, TrackingService::class.java).setAction(ACTION_START_KORRIGIEREN)
+                        .putExtra(EXTRA_START_ADRESSE, adresse)
+                )
+            }
+        }
     }
 
     private val app by lazy { application as FahrtenbuchApp }
@@ -148,6 +159,9 @@ class TrackingService : LifecycleService() {
     // Automatischer Start per Bluetooth
     private var wartend: LosfahrErkennung? = null
     private var wartenJob: Job? = null
+
+    /** Berechnung des Nachtrags nach korrigiertem Start – eine neuere Korrektur ersetzt sie. */
+    private var korrekturJob: Job? = null
 
     /** Auto, mit dem das Handy verbunden ist – nur bekannt, solange der Dienst die Verbindung mitbekommen hat. */
     private var auto: BtGeraet? = null
@@ -242,6 +256,13 @@ class TrackingService : LifecycleService() {
             }
             ACTION_BT_GETRENNT -> lifecycleScope.launch { getrennt(autoAus(intent)) }
             ACTION_NICHT_AUFZEICHNEN -> lifecycleScope.launch { wartenBeenden() }
+            ACTION_START_KORRIGIEREN -> {
+                // Mit laufender Fahrt ist der Dienst schon im Vordergrund, nach einem Prozessende noch nicht
+                if (fahrt == null) vordergrundAktuell()
+                val adresse = intent.getStringExtra(EXTRA_START_ADRESSE).orEmpty()
+                korrekturJob?.cancel()
+                korrekturJob = lifecycleScope.launch { startKorrigieren(adresse) }
+            }
             // Neustart durch das System: nur eine laufende Fahrt fortsetzen, nie eine neue beginnen
             null -> {
                 vordergrund(System.currentTimeMillis(), 0.0, "")
@@ -533,6 +554,48 @@ class TrackingService : LifecycleService() {
         benachrichtigungAktualisieren()
     }
 
+    /**
+     * Startadresse korrigiert, weil der Start zu spät gedrückt wurde (die Adresse hat die App schon
+     * gespeichert): Die Strecke vom echten Start bis zum Beginn der Aufzeichnung wird über die Straße
+     * nachgerechnet und die Abfahrt um die Fahrzeit vorverlegt. Ein früherer Nachtrag wird ersetzt.
+     */
+    private suspend fun startKorrigieren(adresse: String) {
+        if (adresse.isBlank() || !wiederherstellen()) return
+        val f = mutex.withLock { fahrt?.let { repo.fahrt(it.id) } } ?: return
+        if (f.status != FahrtStatus.LAUFEND) return
+        LiveStatus.zustand.update { it.copy(nachtrag = NachtragStand("Kilometer ab dem neuen Start werden berechnet …")) }
+        val ergebnis = StartKorrektur.berechnen(app, f, adresse)
+        mutex.withLock {
+            val db = repo.fahrt(f.id)
+            // Inzwischen erneut korrigiert: Dann zählt die neuere Korrektur
+            if (db == null || db.startAdresse.trim() != adresse.trim()) return@withLock
+            if (ergebnis is NachtragErgebnis.Fehler) {
+                LiveStatus.zustand.update { it.copy(nachtrag = NachtragStand("Kilometer nicht ergänzt: ${ergebnis.text}", fehler = true)) }
+                return@withLock
+            }
+            val n = (ergebnis as NachtragErgebnis.Ok).nachtrag
+            val r = rechner
+            val m = fahrt
+            when {
+                db.status == FahrtStatus.LAUFEND && !beendet && r != null && m != null && m.id == db.id -> {
+                    // Der Streckenrechner zählt ab dem nachgetragenen Stand weiter
+                    r.nachtragen(n.meter - db.nachtragMeter)
+                    val neu = StartKorrektur.anwenden(db, n).copy(distanzMeter = r.meter)
+                    repo.nachtragSetzen(neu)
+                    fahrt = m.copy(
+                        startZeit = neu.startZeit, startAdresse = neu.startAdresse, distanzMeter = neu.distanzMeter,
+                        nachtragMeter = neu.nachtragMeter, nachtragMs = neu.nachtragMs,
+                    )
+                }
+                // Während der Berechnung beendet und noch nicht zugeordnet
+                db.status == FahrtStatus.OFFEN -> repo.nachtragSetzen(StartKorrektur.anwenden(db, n))
+                db.status == FahrtStatus.FERTIG -> repo.fahrtSpeichern(StartKorrektur.anwenden(db, n))
+            }
+            LiveStatus.zustand.update { it.copy(nachtrag = null) }
+        }
+        benachrichtigungAktualisieren()
+    }
+
     @SuppressLint("MissingPermission")
     private suspend fun startpositionErmitteln() {
         val loc = withTimeoutOrNull(20_000) {
@@ -725,7 +788,7 @@ class TrackingService : LifecycleService() {
         rechner = null
         stillstand = null
         kursBasis = null
-        LiveStatus.zustand.update { it.copy(kmh = null, voraus = null) }
+        LiveStatus.zustand.update { it.copy(kmh = null, voraus = null, nachtrag = null) }
         if (ergebnis != null) {
             Benachrichtigungen.beendet(
                 this, ergebnis.id, ergebnis.distanzMeter, ergebnis.endeAdresse,

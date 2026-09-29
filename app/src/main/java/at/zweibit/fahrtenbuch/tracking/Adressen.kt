@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 import kotlin.coroutines.resume
+import kotlin.math.cos
 
 object Adressen {
     private val KOORDINATEN = Regex("""^-?\d{1,3}\.\d+,\s*-?\d{1,3}\.\d+$""")
@@ -39,15 +40,25 @@ object Adressen {
     suspend fun bestimmen(context: Context, lat: Double, lon: Double, orte: List<Ort>, timeoutMs: Long = 10_000): String =
         Orte.erkennen(orte, lat, lon)?.alsAdresse ?: ermitteln(context, lat, lon, timeoutMs)
 
-    /** Koordinaten zu einer eingegebenen Adresse (für die automatische Erkennung gespeicherter Orte). */
+    /**
+     * Koordinaten zu einer eingegebenen Adresse (gespeicherte Orte, korrigierter Start). Mit [nahe] wird im
+     * Umkreis von rund 100 km um diesen Punkt gesucht – so findet „Hauptplatz 1“ den im eigenen Ort.
+     */
     @Suppress("DEPRECATION")
-    suspend fun koordinaten(context: Context, adresse: String): Pair<Double, Double>? {
+    suspend fun koordinaten(context: Context, adresse: String, nahe: Pair<Double, Double>? = null): Pair<Double, Double>? {
         if (adresse.isBlank() || !Geocoder.isPresent()) return null
         val geocoder = Geocoder(context, Locale.getDefault())
+        val box = nahe?.let { (lat, lon) ->
+            val dLon = UMKREIS_GRAD / cos(Math.toRadians(lat)).coerceAtLeast(0.1)
+            doubleArrayOf(
+                (lat - UMKREIS_GRAD).coerceAtLeast(-90.0), (lon - dLon).coerceAtLeast(-180.0),
+                (lat + UMKREIS_GRAD).coerceAtMost(90.0), (lon + dLon).coerceAtMost(180.0),
+            )
+        }
         val treffer: Address? = withTimeoutOrNull(10_000) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 suspendCancellableCoroutine { cont ->
-                    geocoder.getFromLocationName(adresse, 1, object : Geocoder.GeocodeListener {
+                    val listener = object : Geocoder.GeocodeListener {
                         override fun onGeocode(addresses: MutableList<Address>) {
                             if (cont.isActive) cont.resume(addresses.firstOrNull())
                         }
@@ -55,16 +66,24 @@ object Adressen {
                         override fun onError(errorMessage: String?) {
                             if (cont.isActive) cont.resume(null)
                         }
-                    })
+                    }
+                    if (box == null) geocoder.getFromLocationName(adresse, 1, listener)
+                    else geocoder.getFromLocationName(adresse, 1, box[0], box[1], box[2], box[3], listener)
                 }
             } else {
                 withContext(Dispatchers.IO) {
-                    runCatching { geocoder.getFromLocationName(adresse, 1)?.firstOrNull() }.getOrNull()
+                    runCatching {
+                        if (box == null) geocoder.getFromLocationName(adresse, 1)?.firstOrNull()
+                        else geocoder.getFromLocationName(adresse, 1, box[0], box[1], box[2], box[3])?.firstOrNull()
+                    }.getOrNull()
                 }
             }
         }
         return treffer?.takeIf { it.hasLatitude() && it.hasLongitude() }?.let { it.latitude to it.longitude }
     }
+
+    /** Halbe Kantenlänge des Suchgebiets in Breitengraden (0,9° ≈ 100 km). */
+    private const val UMKREIS_GRAD = 0.9
 
     @Suppress("DEPRECATION")
     private suspend fun abfragen(context: Context, lat: Double, lon: Double): Address? {

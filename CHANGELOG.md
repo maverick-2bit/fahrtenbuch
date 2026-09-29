@@ -2,6 +2,25 @@
 
 Alle Änderungen am Fahrtenbuch (Android-App und Server). Versionen nach SemVer; App und Server tragen dieselbe Nummer.
 
+## [0.6.0] – 2026-09-29
+
+### Neu
+- Start zu spät gedrückt: Wird während der Fahrt die Startadresse auf den richtigen Start korrigiert, rechnet
+  die App die fehlende Strecke bis zum Beginn der Aufzeichnung über die Straße nach, zählt sie sofort zu den
+  Kilometern und verlegt die Abfahrt um die geschätzte Fahrzeit vor. Eine erneute Korrektur ersetzt den
+  Nachtrag, zurück auf den ursprünglichen Start nimmt ihn wieder heraus; eine genauere Adresse am selben Ort
+  (unter 250 m) ändert keine Kilometer. Gleiches beim Zuordnen am Ziel, wenn dort „Von“ geändert wird.
+  Android-App und iPhone-Web-App; die Route kommt über den Server, das Handy muss dafür verbunden sein.
+- Android-App: Datenbank-Version 5 (Spalten `nachtragMeter`, `nachtragMs`).
+- Server: `/api/v1/koordinaten` sucht mit `nahe: {lat, lon}` nur im Umkreis von rund 100 km – so findet
+  „Hauptplatz 1“ den Hauptplatz im eigenen Ort.
+
+### Geändert
+- Geschwindigkeit während der Fahrt deutlich größer, mit einem Blick lesbar (Android-App und Web-App).
+- Von Hand geänderte Kilometer oder Abfahrt (Fahrt bearbeiten) ersetzen einen berechneten Nachtrag.
+- Web-App: Nach dem Ändern einer Adresse während der Fahrt zeigt die Fahrtkarte die Änderung sofort, nicht
+  erst mit der nächsten GPS-Position.
+
 ## [0.5.0] – 2026-09-28
 
 ### Neu

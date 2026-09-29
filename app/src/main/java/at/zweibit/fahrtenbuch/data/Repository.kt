@@ -73,6 +73,9 @@ class Repository(private val db: AppDatabase, private val nachAenderung: () -> U
     suspend fun distanzSetzen(id: Long, meter: Double) = fahrten.distanzSetzen(id, meter)
     suspend fun startPositionSetzen(id: Long, lat: Double, lon: Double) = fahrten.startPositionSetzen(id, lat, lon)
     suspend fun startAdresseSetzen(id: Long, adresse: String) = fahrten.startAdresseSetzen(id, adresse)
+
+    /** Kilometer, Abfahrt und Nachtrag nach korrigiertem Start (laufende oder noch nicht zugeordnete Fahrt). */
+    suspend fun nachtragSetzen(f: Fahrt) = fahrten.nachtragSetzen(f.id, f.distanzMeter, f.startZeit, f.nachtragMeter, f.nachtragMs)
     suspend fun zwischenzieleSetzen(id: Long, liste: List<Zwischenziel>) =
         fahrten.zwischenzieleSetzen(id, Zwischenziele.schreiben(liste))
     suspend fun punktSpeichern(punkt: Trackpunkt) = fahrten.punktEinfuegen(punkt)

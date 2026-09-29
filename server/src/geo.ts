@@ -2,7 +2,8 @@ import { fahrerPruefen } from "./anmeldung";
 import { Env, HttpFehler, json, leseJson, text } from "./hilfen";
 
 /**
- * Adressen und Straßenkilometer für die iPhone-Web-App (die Android-App nutzt den Geocoder des Handys).
+ * Adressen und Straßenkilometer für die iPhone-Web-App (die Android-App nutzt für Adressen den Geocoder des
+ * Handys, für Straßenkilometer nach einem korrigierten Start ebenfalls diese Route).
  * Die Anfragen laufen über den Server, damit die Nutzungsregeln der OpenStreetMap-Dienste eingehalten
  * werden: eigene Kennung, Zwischenspeicher, höchstens vereinzelte Anfragen (nur beim Start, Halt und
  * Ende einer Fahrt). Nur verbundene Fahrer dürfen abfragen – kein offener Vermittler für Dritte.
@@ -11,14 +12,16 @@ import { Env, HttpFehler, json, leseJson, text } from "./hilfen";
 type Holen = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 const NOMINATIM = "https://nominatim.openstreetmap.org";
-// Routing der FOSSGIS (wie auf openstreetmap.org), nur für Lücken bei ausgeschaltetem Bildschirm
+// Routing der FOSSGIS (wie auf openstreetmap.org): Lücken bei ausgeschaltetem Bildschirm, korrigierter Start
 const OSRM = "https://routing.openstreetmap.de/routed-car/route/v1/driving";
 const SPEICHER_S = 30 * 86_400;
+/** Halbe Kantenlänge des Suchgebiets um einen Punkt in Breitengraden (0,9° ≈ 100 km). */
+const UMKREIS_GRAD = 0.9;
 
 /** Anfragekopf, der die Anwendung gegenüber den OSM-Diensten ausweist. */
 function kennung(env: Env): HeadersInit {
   const adresse = env.OEFFENTLICHE_ADRESSE?.replace(/\/+$/, "") || "https://fahrtenbuch.smarte.events";
-  return { "user-agent": `Fahrtenbuch/0.5 (+${adresse})`, referer: `${adresse}/`, accept: "application/json" };
+  return { "user-agent": `Fahrtenbuch/0.6 (+${adresse})`, referer: `${adresse}/`, accept: "application/json" };
 }
 
 function koordinate(wert: unknown, grenze: number): number {
@@ -104,16 +107,32 @@ export async function adresse(req: Request, env: Env, holen: Holen = fetch): Pro
   return json(ergebnis ?? { adresse: "" });
 }
 
-/** POST /api/v1/koordinaten {adresse} → {lat, lon} oder {lat: null} – für gespeicherte Orte. */
+/** Suchgebiet für Nominatim: rund 100 km um den Punkt, nur Treffer darin. */
+function suchgebiet(p: { lat: number; lon: number }): string {
+  const dLon = UMKREIS_GRAD / Math.max(0.1, Math.cos((p.lat * Math.PI) / 180));
+  const breite = (x: number) => Math.min(90, Math.max(-90, x)).toFixed(3);
+  const laenge = (x: number) => Math.min(180, Math.max(-180, x)).toFixed(3);
+  return `&viewbox=${laenge(p.lon - dLon)},${breite(p.lat + UMKREIS_GRAD)},${laenge(p.lon + dLon)},${breite(p.lat - UMKREIS_GRAD)}&bounded=1`;
+}
+
+/**
+ * POST /api/v1/koordinaten {adresse, nahe?: {lat, lon}} → {lat, lon} oder {lat: null} – für gespeicherte
+ * Orte und den korrigierten Start. Mit „nahe“ nur in der Umgebung: So findet „Hauptplatz 1“ den im eigenen Ort.
+ */
 export async function koordinaten(req: Request, env: Env, holen: Holen = fetch): Promise<Response> {
   await fahrerPruefen(req, env);
-  const b = await leseJson<{ adresse?: unknown }>(req, 2_000);
+  const b = await leseJson<{ adresse?: unknown; nahe?: { lat?: unknown; lon?: unknown } }>(req, 2_000);
   const suche = text(b.adresse, 300).trim().replace(/\s+/g, " ");
   if (suche.length < 3) throw new HttpFehler(400, "Adresse fehlt");
-  const ergebnis = await gespeichert(`koordinaten/${encodeURIComponent(suche.toLowerCase())}`, async () => {
+  // Auf 0,1° gerundet (≈ 10 km): genügt für das Suchgebiet, und der Zwischenspeicher greift öfter
+  const nahe = b.nahe
+    ? { lat: Math.round(koordinate(b.nahe.lat, 90) * 10) / 10, lon: Math.round(koordinate(b.nahe.lon, 180) * 10) / 10 }
+    : null;
+  const bereich = nahe ? `${nahe.lat},${nahe.lon}/` : "";
+  const ergebnis = await gespeichert(`koordinaten/${bereich}${encodeURIComponent(suche.toLowerCase())}`, async () => {
     const d = (await dienst(
       holen,
-      `${NOMINATIM}/search?format=jsonv2&limit=1&accept-language=de&q=${encodeURIComponent(suche)}`,
+      `${NOMINATIM}/search?format=jsonv2&limit=1&accept-language=de${nahe ? suchgebiet(nahe) : ""}&q=${encodeURIComponent(suche)}`,
       env,
     )) as { lat?: string; lon?: string }[];
     const t = Array.isArray(d) ? d[0] : undefined;
@@ -126,7 +145,8 @@ export async function koordinaten(req: Request, env: Env, holen: Holen = fetch):
 
 /**
  * POST /api/v1/route {von: {lat, lon}, nach: {lat, lon}} → {meter, sekunden}
- * Straßenkilometer zwischen zwei Punkten – für die Strecke, während der Bildschirm aus war.
+ * Straßenkilometer zwischen zwei Punkten – für die Strecke, während der Bildschirm aus war, und vom
+ * korrigierten Start bis zum Beginn der Aufzeichnung (Start zu spät gedrückt).
  */
 export async function route(req: Request, env: Env, holen: Holen = fetch): Promise<Response> {
   await fahrerPruefen(req, env);

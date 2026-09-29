@@ -7,6 +7,7 @@ import * as F from "./format.js";
 import { MIN_PIN } from "./krypto.js";
 import { alsAdresse, adresseFehlt, streckeText, zwischenzieleLesen, zwischenzieleSchreiben } from "./orte.js";
 import * as S from "./sicherung.js";
+import { nachtragAnwenden } from "./strecke.js";
 import { verbindungLesen } from "./syncformat.js";
 
 const $inhalt = document.getElementById("inhalt");
@@ -266,10 +267,25 @@ function laufendeKarte(s, orte, einst) {
       el("div", { class: "titel" }, pause ? "Fahrt pausiert" : "Fahrt läuft"),
       el("div", { class: "km" }, F.km(s.meter)),
       el("div", {}, "Dauer: ", el("span", { "data-seit": f.startZeit }, F.dauer(Date.now() - f.startZeit)), ` · seit ${F.uhrzeit(f.startZeit)}`),
-      !pause && s.kmh !== null ? el("div", { class: "tempo" }, `Tempo: ${s.kmh} km/h`) : null,
+      // Groß, damit die Geschwindigkeit während der Fahrt mit einem Blick lesbar ist
+      !pause && s.kmh !== null ? el("div", { class: "tempo" }, el("span", { class: "zahl" }, String(s.kmh)), " km/h") : null,
       zeile("Start", f.startAdresse || "Standort wird ermittelt …", () =>
-        adresseDialog("Startadresse ändern", f.startAdresse, orte, (t) => A.startAdresseAendern(t), "Zum Beispiel, wenn du den Start zu spät gedrückt hast. Kilometer und Abfahrtszeit kannst du nach der Fahrt unter „Fahrten“ korrigieren."),
+        adresseDialog(
+          "Startadresse ändern",
+          f.startAdresse,
+          orte,
+          (t) => A.startAdresseAendern(t),
+          "Zum Beispiel, wenn du den Start zu spät gedrückt hast: Die App rechnet die Kilometer vom richtigen Start bis zum Beginn der Aufzeichnung über die Straße nach und schätzt die Abfahrtszeit.",
+        ),
       ),
+      f.nachtragMeter > 0
+        ? el(
+            "p",
+            { class: "klein" },
+            `Inkl. ${F.km(f.nachtragMeter)} vom korrigierten Start${f.nachtragMs >= 60_000 ? `, Abfahrt ca. ${F.dauer(f.nachtragMs)} früher` : ""} (geschätzt).`,
+          )
+        : null,
+      s.nachtrag ? el("p", { class: s.nachtrag.fehler ? "klein fehler" : "klein" }, s.nachtrag.text) : null,
       zwischen.map((z, i) =>
         zeile(
           (pause && i === zwischen.length - 1 ? "Zwischenziel" : "Über") + (z.an ? ` · ${F.uhrzeit(z.an)}${z.ab ? "–" + F.uhrzeit(z.ab) : ""}` : ""),
@@ -329,6 +345,9 @@ function adresseDialog(titel, anfang, orte, speichern, hinweis = null) {
           e.preventDefault();
           await speichern(a.eingabe.value);
           dialogZu();
+          // Bei offenem Dialog baut sich die Fahrtseite nicht neu auf – die Änderung gleich zeigen,
+          // nicht erst mit der nächsten Position
+          route();
         },
       },
       a.knoten,
@@ -379,15 +398,37 @@ async function kategorieDialog(fahrt) {
   const notiz = el("input", { type: "text", value: fahrt.notiz ?? "", autocomplete: "off" });
   const abfahrt = el("input", { type: "time", value: F.isoZeit(fahrt.startZeit) });
   const ankunft = el("input", { type: "time", value: F.isoZeit(fahrt.endeZeit ?? fahrt.startZeit) });
+  // Start ohne Zutun des Nutzers (samt nachgeladener GPS-Adresse) – weicht der Start davon ab, wird nachgerechnet
+  let startVorgabe = fahrt.startAdresse ?? "";
+  const startKorrigiert = () => !!von.eingabe.value.trim() && von.eingabe.value.trim() !== startVorgabe.trim();
+  const $neuerStart = el("p", { class: "klein", hidden: true }, "Neuer Start: Beim Speichern rechnet die App die Kilometer ab dort nach und schätzt die Abfahrt.");
+  von.eingabe.addEventListener("input", () => ($neuerStart.hidden = !startKorrigiert()));
+  const $status = el("p", { class: "klein", hidden: true });
+  let speichert = false;
 
   async function speichern(k) {
-    const start = zeitAmTag(fahrt.startZeit, abfahrt.value || F.isoZeit(fahrt.startZeit));
+    if (speichert) return;
+    speichert = true;
+    let aktuell = (await db.fahrt(fahrt.uuid)) ?? fahrt;
+    let hinweis = "";
+    // Start im Dialog korrigiert: fehlende Kilometer und Abfahrt nachtragen
+    if (startKorrigiert() && aktuell.status === "offen") {
+      $status.hidden = false;
+      $status.textContent = "Kilometer ab dem neuen Start werden nachgerechnet …";
+      for (const b of document.querySelectorAll(".kategorien button")) b.disabled = true;
+      const e = await A.nachtragBerechnen(aktuell, von.eingabe.value);
+      if (e.nachtrag) aktuell = { ...aktuell, ...nachtragAnwenden(aktuell, e.nachtrag) };
+      else hinweis = ` Kilometer ab dem neuen Start nicht ergänzt: ${e.fehler}`;
+    }
+    // Von Hand geänderte Abfahrt gilt, sonst die gespeicherte (samt geschätzter Vorverlegung)
+    const abfahrtGeaendert = abfahrt.value && abfahrt.value !== F.isoZeit(fahrt.startZeit);
+    const start = abfahrtGeaendert ? zeitAmTag(fahrt.startZeit, abfahrt.value) : aktuell.startZeit;
     let ende = zeitAmTag(fahrt.startZeit, ankunft.value || F.isoZeit(fahrt.endeZeit ?? fahrt.startZeit));
     if (ende < start) ende += 86_400_000; // Fahrt über Mitternacht
-    const aktuell = (await db.fahrt(fahrt.uuid)) ?? fahrt;
     await db.fahrtSpeichern({
       ...aktuell,
       startZeit: start,
+      nachtragMs: abfahrtGeaendert ? 0 : (aktuell.nachtragMs ?? 0),
       endeZeit: ende,
       startAdresse: von.eingabe.value.trim(),
       endeAdresse: nach.eingabe.value.trim(),
@@ -397,7 +438,7 @@ async function kategorieDialog(fahrt) {
       status: "fertig",
     });
     dialogZu();
-    melde(`Als „${k.name}“ gespeichert.`);
+    melde(`Als „${k.name}“ gespeichert.${hinweis}`, !!hinweis);
     S.bald();
     route();
   }
@@ -405,8 +446,10 @@ async function kategorieDialog(fahrt) {
   dialog(
     el("h2", {}, "Wie soll die Fahrt gespeichert werden?"),
     el("p", { class: "fett" }, `${F.datumKurz(fahrt.startZeit)} · ${F.km(fahrt.distanzMeter)}`),
+    fahrt.nachtragMeter > 0 ? el("p", { class: "klein" }, `Inkl. ${F.km(fahrt.nachtragMeter)} vom korrigierten Start (über die Straße berechnet).`) : null,
     el("div", { class: "zweispaltig" }, feld("Abfahrt", abfahrt), feld("Ankunft", ankunft)),
     von.knoten,
+    $neuerStart,
     ueber.map((u) => u.knoten),
     nach.knoten,
     feld("Zweck / Notiz (optional)", notiz),
@@ -416,6 +459,7 @@ async function kategorieDialog(fahrt) {
       { class: "kategorien" },
       aktive.map((k) => el("button", { class: "kategorie", stil: { background: F.farbe(k.farbe), color: F.schriftAuf(k.farbe) }, onclick: () => speichern(k) }, k.name)),
     ),
+    $status,
     el(
       "div",
       { class: "aktionen" },
@@ -442,6 +486,7 @@ async function kategorieDialog(fahrt) {
     const neu = await A.adresseBestimmen(lat, lon);
     if (adresseFehlt(neu) || feldEingabe.value !== alt) return;
     feldEingabe.value = neu;
+    if (feldEingabe === von.eingabe) startVorgabe = neu;
     await db.unfertigAendern(fahrt.uuid, () => setzen(neu), ["offen"]);
   };
   nachladen(von.eingabe, fahrt.startAdresse, fahrt.startLat, fahrt.startLon, (a) => ({ startAdresse: a }));
@@ -554,6 +599,13 @@ async function bearbeitenSeite(uuid) {
     if (ende < start) ende += 86_400_000; // Ankunft vor Abfahrt = Fahrt über Mitternacht
     // Unveränderte km-Anzeige soll die genaue GPS-Strecke nicht verfälschen
     const meter = original && F.kmWert(original.distanzMeter) === km ? original.distanzMeter : km * 1000;
+    // Von Hand geänderte Kilometer oder Abfahrt ersetzen einen berechneten Nachtrag (korrigierter Start)
+    const nachtrag = original
+      ? {
+          nachtragMeter: meter === original.distanzMeter ? (original.nachtragMeter ?? 0) : 0,
+          nachtragMs: Math.floor(start / 60_000) === Math.floor(original.startZeit / 60_000) ? (original.nachtragMs ?? 0) : 0,
+        }
+      : {};
     const f = {
       ...(original ?? { uuid: crypto.randomUUID(), startLat: null, startLon: null, endeLat: null, endeLon: null }),
       startZeit: start,
@@ -564,6 +616,7 @@ async function bearbeitenSeite(uuid) {
         zwischen.map((x) => ({ ...x.z, adresse: x.feld.eingabe.value.trim() })).filter((z) => z.adresse),
       ),
       distanzMeter: meter,
+      ...nachtrag,
       kategorieId,
       notiz: notiz.value.trim(),
       status: "fertig",

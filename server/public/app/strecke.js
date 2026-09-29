@@ -1,5 +1,6 @@
 // Streckenmessung wie in der Android-App (tracking/Strecke.kt) – ergänzt um Lücken, in denen iOS die
 // Web-App angehalten hat (Bildschirm aus, andere App im Vordergrund).
+import { km } from "./format.js";
 
 const ERDRADIUS_M = 6_371_008.8;
 const rad = (g) => (g * Math.PI) / 180;
@@ -100,3 +101,41 @@ export function ankunftSchaetzen({ letzteBewegung, luecke = null, verborgenAb = 
   if (verborgenAb !== null && verborgenAb >= letzteBewegung) return letzteBewegung;
   return jetzt;
 }
+
+// ------------------------------------------------------------------ Korrigierter Start
+
+/** Näher am Beginn der Aufzeichnung: nur eine genauere Adresse, es fehlt keine Strecke. */
+export const NACHTRAG_MIN_M = 250;
+/** Weiter entfernt: vermutlich falsch gefunden (z. B. gleichnamige Straße in einem anderen Ort). */
+export const NACHTRAG_MAX_M = 100_000;
+export const KEIN_NACHTRAG = Object.freeze({ meter: 0, ms: 0 });
+
+/**
+ * Start zu spät gedrückt und Startadresse korrigiert: Die Strecke vom echten Start bis zum Beginn der
+ * Aufzeichnung kommt dazu, die Abfahrt rückt um die geschätzte Fahrzeit vor. Ein früherer Nachtrag wird
+ * ersetzt, nicht addiert – wie StartKorrektur.anwenden in der Android-App.
+ * @param n {meter, ms}
+ * @returns die geänderten Felder der Fahrt
+ */
+export function nachtragAnwenden(f, n) {
+  return {
+    distanzMeter: Math.max(0, (f.distanzMeter ?? 0) - (f.nachtragMeter ?? 0) + n.meter),
+    startZeit: f.startZeit + (f.nachtragMs ?? 0) - n.ms,
+    nachtragMeter: n.meter,
+    nachtragMs: n.ms,
+  };
+}
+
+/** Entscheidet anhand der Luftlinie zum Beginn der Aufzeichnung: null = Route berechnen. */
+export function nachtragVorpruefen(abstandM) {
+  if (abstandM < NACHTRAG_MIN_M) return { nachtrag: KEIN_NACHTRAG };
+  if (abstandM > NACHTRAG_MAX_M) {
+    return {
+      fehler: `Die Adresse liegt ${km(abstandM)} vom Beginn der Aufzeichnung entfernt – vermutlich ein anderer Ort. Bitte mit Postleitzahl und Ort eingeben.`,
+    };
+  }
+  return null;
+}
+
+/** Nachtrag aus der Route {meter, sekunden}; über die Straße ist es nie kürzer als die Luftlinie. */
+export const nachtragAusRoute = (r, abstandM) => ({ meter: Math.max(r.meter, abstandM), ms: r.sekunden * 1000 });

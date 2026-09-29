@@ -4,7 +4,7 @@ import * as db from "./daten.js";
 import { ausB64, b64, huelleErstellen, huelleOeffnen, MIN_PIN, zufall } from "./krypto.js";
 import { anfrage, geraetBeschreiben, vorbereiten } from "./syncformat.js";
 
-export const VERSION = "0.5.0";
+export const VERSION = "0.6.0";
 const JE_ANFRAGE = 100;
 
 /** Als Web-App vom Home-Bildschirm gestartet (nicht im Safari-Tab)? */
@@ -207,9 +207,13 @@ export async function adresseErmitteln(lat, lon, timeoutMs = 8_000) {
   return d?.adresse || null;
 }
 
-/** Koordinaten zu einer Adresse (für gespeicherte Orte) oder null. */
-export async function koordinatenSuchen(adresse) {
-  const d = await kartendienst("/api/v1/koordinaten", { adresse }, 10_000);
+/**
+ * Koordinaten zu einer Adresse (gespeicherte Orte, korrigierter Start) oder null.
+ * Mit nahe ({lat, lon}) nur in der Umgebung – so findet „Hauptplatz 1“ den im eigenen Ort.
+ */
+export async function koordinatenSuchen(adresse, nahe = null) {
+  const body = nahe ? { adresse, nahe: { lat: nahe.lat, lon: nahe.lon } } : { adresse };
+  const d = await kartendienst("/api/v1/koordinaten", body, 10_000);
   return typeof d?.lat === "number" && typeof d?.lon === "number" ? { lat: d.lat, lon: d.lon } : null;
 }
 

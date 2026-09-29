@@ -100,6 +100,15 @@ data class Fahrt(
     /** Zwischenziele als JSON (siehe [Zwischenziele]); leer = direkte Fahrt. Seit DB-Version 2. */
     @ColumnInfo(defaultValue = "")
     val zwischenziele: String = "",
+    /**
+     * Start zu spät gedrückt und Startadresse korrigiert: Straßenkilometer vom korrigierten Start bis zum
+     * Beginn der Aufzeichnung (in [distanzMeter] enthalten) und die geschätzte Fahrzeit dafür, um die
+     * [startZeit] vorverlegt wurde. Eine neue Korrektur ersetzt den Nachtrag. Seit DB-Version 5.
+     */
+    @ColumnInfo(defaultValue = "0")
+    val nachtragMeter: Double = 0.0,
+    @ColumnInfo(defaultValue = "0")
+    val nachtragMs: Long = 0,
 )
 
 @Entity(
